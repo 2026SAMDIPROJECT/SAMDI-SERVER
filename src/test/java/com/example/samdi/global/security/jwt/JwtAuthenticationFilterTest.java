@@ -48,7 +48,7 @@ class JwtAuthenticationFilterTest {
         objectMapper = new ObjectMapper();
         String secret = Base64.getEncoder().encodeToString(Jwts.SIG.HS256.key().build().getEncoded());
         signingKey = Keys.hmacShaKeyFor(secret.getBytes(StandardCharsets.UTF_8));
-        jwtProvider = new JwtProvider(secret, 30);
+        jwtProvider = new JwtProvider(secret, 30, 20160);
         filter = new JwtAuthenticationFilter(jwtProvider, new SecurityErrorResponseWriter(objectMapper));
         request = new MockHttpServletRequest("GET", "/test/auth");
         request.setServletPath("/test/auth");
@@ -86,8 +86,18 @@ class JwtAuthenticationFilterTest {
     }
 
     @Test
+    void accessTokenWithoutSessionIsRejected() throws Exception {
+        Instant now = Instant.now();
+        String token = Jwts.builder().subject("42").issuedAt(Date.from(now))
+                .expiration(Date.from(now.plusSeconds(60))).claim("type", "access")
+                .signWith(signingKey).compact();
+        request.addHeader(HttpHeaders.AUTHORIZATION, "Bearer " + token);
+        assertUnauthorized(ErrorCode.INVALID_TOKEN);
+    }
+
+    @Test
     void validJwtContinuesFilterChain() throws Exception {
-        request.addHeader(HttpHeaders.AUTHORIZATION, "Bearer " + jwtProvider.createAccessToken("42"));
+        request.addHeader(HttpHeaders.AUTHORIZATION, "Bearer " + jwtProvider.createAccessToken("42", "test-session"));
 
         filter.doFilter(request, response, chain);
 
@@ -97,7 +107,7 @@ class JwtAuthenticationFilterTest {
 
     @Test
     void validJwtStoresUserIdBeforeContinuingChain() throws Exception {
-        request.addHeader(HttpHeaders.AUTHORIZATION, "Bearer " + jwtProvider.createAccessToken("42"));
+        request.addHeader(HttpHeaders.AUTHORIZATION, "Bearer " + jwtProvider.createAccessToken("42", "test-session"));
         FilterChain inspectingChain = (currentRequest, currentResponse) ->
                 assertEquals("42", currentRequest.getAttribute("userId"));
 
@@ -108,7 +118,7 @@ class JwtAuthenticationFilterTest {
 
     @Test
     void validJwtRegistersAuthenticationBeforeContinuingChain() throws Exception {
-        request.addHeader(HttpHeaders.AUTHORIZATION, "Bearer " + jwtProvider.createAccessToken("42"));
+        request.addHeader(HttpHeaders.AUTHORIZATION, "Bearer " + jwtProvider.createAccessToken("42", "test-session"));
         FilterChain inspectingChain = (currentRequest, currentResponse) -> {
             var authentication = SecurityContextHolder.getContext().getAuthentication();
             assertNotNull(authentication);
@@ -141,7 +151,7 @@ class JwtAuthenticationFilterTest {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"/auth/login", "/auth/signup"})
+    @ValueSource(strings = {"/auth/login", "/auth/signup", "/auth/email/send"})
     void publicAuthEndpointsContinueWithoutJwt(String path) throws Exception {
         request.setMethod("POST");
         request.setRequestURI(path);
@@ -183,7 +193,7 @@ class JwtAuthenticationFilterTest {
         assertFalse(body.get("success").asBoolean());
         assertEquals(expectedError.name(), body.get("error").get("code").asString());
         assertEquals(expectedError.getMessage(), body.get("message").asString());
-        assertTrue(body.get("data").isNull());
+        assertTrue(!body.hasNonNull("data"));
         assertTrue(body.get("error").get("details").isArray());
         assertTrue(body.get("error").get("details").isEmpty());
         assertNull(request.getAttribute("userId"));

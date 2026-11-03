@@ -1,9 +1,7 @@
 package com.example.samdi.global.exception;
 
-import com.example.samdi.domain.user.exception.DuplicateEmailException;
-import com.example.samdi.domain.user.exception.DuplicateLoginIdException;
-import com.example.samdi.domain.user.exception.InvalidCredentialsException;
-import com.example.samdi.domain.user.exception.PasswordMismatchException;
+import com.example.samdi.domain.user.exception.*;
+import com.example.samdi.domain.auth.email.EmailSendException;
 import com.example.samdi.global.response.ApiError;
 import com.example.samdi.global.response.ApiResponse;
 import com.example.samdi.global.response.ErrorDetail;
@@ -32,13 +30,18 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
 
     private static final Logger log = LoggerFactory.getLogger(GlobalExceptionHandler.class);
 
+    @ExceptionHandler(EmailSendException.class)
+    public ResponseEntity<ApiResponse<Void>> handleEmailSend(EmailSendException e) {
+        return createErrorResponse(e.getErrorCode(), List.of());
+    }
+
     @ExceptionHandler(DuplicateEmailException.class)
     public ResponseEntity<ApiResponse<Void>> handleDuplicateEmail(
             DuplicateEmailException e
     ) {
         return createErrorResponse(
-                ErrorCode.DUPLICATE_EMAIL,
-                List.of(new ErrorDetail("email", ErrorCode.DUPLICATE_EMAIL.getMessage()))
+                UserErrorCode.DUPLICATE_EMAIL,
+                List.of(new ErrorDetail("email", UserErrorCode.DUPLICATE_EMAIL.getMessage()))
         );
     }
 
@@ -47,8 +50,8 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
             DuplicateLoginIdException e
     ) {
         return createErrorResponse(
-                ErrorCode.DUPLICATE_LOGIN_ID,
-                List.of(new ErrorDetail("loginId", ErrorCode.DUPLICATE_LOGIN_ID.getMessage()))
+                UserErrorCode.DUPLICATE_LOGIN_ID,
+                List.of(new ErrorDetail("loginId", UserErrorCode.DUPLICATE_LOGIN_ID.getMessage()))
         );
     }
 
@@ -57,8 +60,8 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
             PasswordMismatchException e
     ) {
         return createErrorResponse(
-                ErrorCode.PASSWORD_MISMATCH,
-                List.of(new ErrorDetail("passwordConfirm", ErrorCode.PASSWORD_MISMATCH.getMessage()))
+                UserErrorCode.PASSWORD_MISMATCH,
+                List.of(new ErrorDetail("passwordConfirm", UserErrorCode.PASSWORD_MISMATCH.getMessage()))
         );
     }
 
@@ -67,7 +70,7 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
             InvalidCredentialsException e
     ) {
         return createErrorResponse(
-                ErrorCode.INVALID_CREDENTIALS,
+                UserErrorCode.INVALID_CREDENTIALS,
                 List.of()
         );
     }
@@ -169,7 +172,7 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     }
 
     private ResponseEntity<ApiResponse<Void>> createErrorResponse(
-            ErrorCode errorCode,
+            BaseErrorCode errorCode,
             List<ErrorDetail> details
     ) {
         return ResponseEntity
@@ -178,10 +181,10 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     }
 
     private ApiResponse<Void> createErrorResponseBody(
-            ErrorCode errorCode,
+            BaseErrorCode errorCode,
             List<ErrorDetail> details
     ) {
-        ApiError error = new ApiError(errorCode.name(), details);
-        return new ApiResponse<>(false, errorCode.getMessage(), null, error);
+        ApiError error = new ApiError(errorCode.getCode(), details);
+        return ApiResponse.failure(errorCode.getMessage(), error);
     }
 }

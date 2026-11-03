@@ -41,12 +41,12 @@ class JwtProviderTest {
     void setUp() {
         secret = Base64.getEncoder().encodeToString(Jwts.SIG.HS256.key().build().getEncoded());
         signingKey = Keys.hmacShaKeyFor(secret.getBytes(StandardCharsets.UTF_8));
-        jwtProvider = new JwtProvider(secret, 30);
+        jwtProvider = new JwtProvider(secret, 30, 20160);
     }
 
     @Test
     void createdTokenIsValidAndExpiresAfterThirtyMinutes() {
-        String token = jwtProvider.createAccessToken("42");
+        String token = jwtProvider.createAccessToken("42", "test-session");
 
         assertEquals("42", jwtProvider.getUserId(token));
         var claims = Jwts.parser().verifyWith(signingKey).build().parseSignedClaims(token).getPayload();
@@ -60,8 +60,8 @@ class JwtProviderTest {
     @ParameterizedTest
     @ValueSource(longs = {1, 7, 60})
     void configuredExpirationMinutesAreApplied(long expirationMinutes) {
-        JwtProvider provider = new JwtProvider(secret, expirationMinutes);
-        String token = provider.createAccessToken("42");
+        JwtProvider provider = new JwtProvider(secret, expirationMinutes, 20160);
+        String token = provider.createAccessToken("42", "test-session");
         var claims = Jwts.parser().verifyWith(signingKey).build().parseSignedClaims(token).getPayload();
 
         assertEquals(Duration.ofMinutes(expirationMinutes), Duration.between(
@@ -74,11 +74,11 @@ class JwtProviderTest {
     void springInjectsNonDefaultExpirationProperty() {
         new ApplicationContextRunner()
                 .withUserConfiguration(JwtProvider.class)
-                .withPropertyValues("jwt.secret=" + secret, "jwt.access-token-expiration-minutes=7")
+                .withPropertyValues("jwt.secret=" + secret, "jwt.access-token-expiration-minutes=7", "jwt.refresh-token-expiration-minutes=20160")
                 .run(context -> {
                     assertNull(context.getStartupFailure());
                     JwtProvider provider = context.getBean(JwtProvider.class);
-                    String token = provider.createAccessToken("42");
+                    String token = provider.createAccessToken("42", "test-session");
                     var claims = Jwts.parser().verifyWith(signingKey).build()
                             .parseSignedClaims(token).getPayload();
 
@@ -92,13 +92,13 @@ class JwtProviderTest {
     @ParameterizedTest
     @ValueSource(longs = {0, -1})
     void nonPositiveExpirationIsRejectedByConstructor(long expirationMinutes) {
-        assertThrows(IllegalArgumentException.class, () -> new JwtProvider(secret, expirationMinutes));
+        assertThrows(IllegalArgumentException.class, () -> new JwtProvider(secret, expirationMinutes, 20160));
     }
 
     @ParameterizedTest
     @CsvSource({
-            "default, , 30", "default, 7, 7",
-            "test, , 30", "test, 7, 7"
+            "default, , 60", "default, 7, 7",
+            "test, , 60", "test, 7, 7"
     })
     void applicationYamlResolvesDefaultAndEnvironmentOverride(
             String profile, String environmentMinutes, long expectedMinutes
@@ -119,7 +119,7 @@ class JwtProviderTest {
             }
 
             JwtProvider provider = context.getBean(JwtProvider.class);
-            String token = provider.createAccessToken("42");
+            String token = provider.createAccessToken("42", "test-session");
             var claims = Jwts.parser().verifyWith(signingKey).build().parseSignedClaims(token).getPayload();
             assertEquals(Duration.ofMinutes(expectedMinutes), Duration.between(
                     claims.getIssuedAt().toInstant(), claims.getExpiration().toInstant()
@@ -163,7 +163,7 @@ class JwtProviderTest {
     @ParameterizedTest
     @ValueSource(strings = {"1", "42", "9223372036854775807"})
     void getUserIdReturnsValidPositiveUserId(String userId) {
-        String token = jwtProvider.createAccessToken(userId);
+        String token = jwtProvider.createAccessToken(userId, "test-session");
 
         assertEquals(userId, jwtProvider.getUserId(token));
     }
@@ -171,7 +171,7 @@ class JwtProviderTest {
     @ParameterizedTest
     @ValueSource(strings = {"abc", "1.5", "1e2", "9223372036854775808"})
     void correctlySignedTokenWithNonNumericOrOverflowingUserIdIsRejected(String userId) {
-        String token = jwtProvider.createAccessToken(userId);
+        String token = jwtProvider.createAccessToken(userId, "test-session");
 
         assertThrows(JwtException.class, () -> jwtProvider.getUserId(token));
     }
@@ -179,7 +179,7 @@ class JwtProviderTest {
     @ParameterizedTest
     @ValueSource(strings = {"0", "-1", "-9223372036854775808"})
     void correctlySignedTokenWithNonPositiveUserIdIsRejected(String userId) {
-        String token = jwtProvider.createAccessToken(userId);
+        String token = jwtProvider.createAccessToken(userId, "test-session");
 
         assertThrows(JwtException.class, () -> jwtProvider.getUserId(token));
     }
@@ -199,15 +199,15 @@ class JwtProviderTest {
     @Test
     void tokenSignedByDifferentProviderIsRejected() {
         String otherSecret = Base64.getEncoder().encodeToString(Jwts.SIG.HS256.key().build().getEncoded());
-        JwtProvider otherProvider = new JwtProvider(otherSecret, 30);
-        String token = jwtProvider.createAccessToken("42");
+        JwtProvider otherProvider = new JwtProvider(otherSecret, 30, 20160);
+        String token = jwtProvider.createAccessToken("42", "test-session");
 
         assertThrows(SignatureException.class, () -> otherProvider.getUserId(token));
     }
 
     @Test
     void tamperedSignatureIsRejected() {
-        String token = jwtProvider.createAccessToken("42");
+        String token = jwtProvider.createAccessToken("42", "test-session");
         String[] parts = token.split("\\.");
         byte[] signature = Base64.getUrlDecoder().decode(parts[2]);
         signature[0] ^= 1;

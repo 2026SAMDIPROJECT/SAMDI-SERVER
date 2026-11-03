@@ -36,7 +36,7 @@ public class SecurityConfig {
                                 "/swagger-ui/**",
                                 "/v3/api-docs/**"
                         ).permitAll()
-                        .requestMatchers(SecurityPaths.LOGIN, SecurityPaths.SIGNUP).permitAll()
+                        .requestMatchers(SecurityPaths.LOGIN, SecurityPaths.SIGNUP, "/auth/refresh", "/auth/email/send", "/auth/email/verify").permitAll()
                         .anyRequest().authenticated()
                 )
                 .build();

@@ -1,5 +1,8 @@
 package com.example.samdi.domain.user.service;
 
+import com.example.samdi.domain.auth.entity.RefreshToken;
+import com.example.samdi.domain.auth.email.EmailVerificationService;
+import com.example.samdi.domain.auth.repository.RefreshTokenRepository;
 import com.example.samdi.domain.user.dto.request.LoginRequest;
 import com.example.samdi.domain.user.dto.request.SignupRequest;
 import com.example.samdi.domain.user.dto.response.LoginResponse;
@@ -11,72 +14,81 @@ import com.example.samdi.domain.user.exception.InvalidCredentialsException;
 import com.example.samdi.domain.user.exception.PasswordMismatchException;
 import com.example.samdi.domain.user.repository.UserRepository;
 import com.example.samdi.global.security.jwt.JwtProvider;
+import jakarta.validation.Valid;
+import lombok.RequiredArgsConstructor;
 import org.hibernate.exception.ConstraintViolationException;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.time.LocalDateTime;
+import java.util.HexFormat;
 import java.util.Locale;
 import java.util.Optional;
+import java.util.UUID;
 
 @Service
+@Transactional(rollbackFor = Exception.class)
+@RequiredArgsConstructor
 public class UserService {
 
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
     private final JwtProvider jwtProvider;
-    private static final String DUMMY_PASSWORD_HASH =
-            "$2a$10$G48i72gfQyJ7URWzsalGbeZsaw79R8FDiHbAQBaAoYOLgHqoRBQiG";
+    private final RefreshTokenRepository refreshTokenRepository;
+    private final EmailVerificationService emailVerificationService;
+    @Value("${samdi.security.dummy-password-hash}")
+    private String dummyPasswordHash;
+    private static final String EMAIL_UNIQUE_CONSTRAINT = "uq_users_email";
+    private static final String USER_NAME_UNIQUE_CONSTRAINT = "uq_users_login_id";
 
-    public UserService(UserRepository userRepository, PasswordEncoder passwordEncoder, JwtProvider jwtProvider) {
-        this.userRepository = userRepository;
-        this.passwordEncoder = passwordEncoder;
-        this.jwtProvider = jwtProvider;
-    }
-
-    @Transactional
     public SignupResponse signup(SignupRequest request) {
-        String email = normalizeEmail(request.email());
-        validateSignup(request, email);
-        User user = User
-                .builder()
-                .email(email)
-                .loginId(request.loginId())
-                .passwordHash(passwordEncoder.encode(request.password()))
-                .build();
+        String email = request.email().trim().toLowerCase(Locale.ROOT);
+        if (!request.password().equals(request.passwordConfirm())) {
+            throw new PasswordMismatchException();
+        }
+        if (userRepository.existsByEmail(email)) {
+            throw new DuplicateEmailException();
+        }
+        if (userRepository.findByUserName(request.loginId()).isPresent()) {
+            throw new DuplicateLoginIdException();
+        }
+        emailVerificationService.consumeProof(email, request.verificationToken());
         try {
+            User user = User
+                    .builder()
+                    .email(email)
+                    .userName(request.loginId())
+                    .password(passwordEncoder.encode(request.password()))
+                    .build();
             User savedUser = userRepository.saveAndFlush(user);
-            return new SignupResponse(savedUser.getId(),
-                    savedUser.getEmail(),
-                    savedUser.getLoginId());
+            return new SignupResponse(savedUser.getEmail(),savedUser.getUserName());
         } catch (DataIntegrityViolationException e) {
-            if (isDuplicateViolation(e, User.EMAIL_UNIQUE_CONSTRAINT)) {
+            if (isDuplicateViolation(e, EMAIL_UNIQUE_CONSTRAINT)) {
                 throw new DuplicateEmailException();
             }
-            if (isDuplicateViolation(e, User.LOGIN_ID_UNIQUE_CONSTRAINT)) {
+            if (isDuplicateViolation(e, USER_NAME_UNIQUE_CONSTRAINT)) {
                 throw new DuplicateLoginIdException();
             }
             throw e;
         }
     }
-    //회원가입이 올바른지 설명
-    private void validateSignup(SignupRequest request, String email) {
-        if (!request.password().equals(request.passwordConfirm())) {
-            throw new PasswordMismatchException();
-        }
 
-        if (userRepository.existsByEmail(email)) {
-            throw new DuplicateEmailException();
+    public String hashToken(String refreshToken) {
+        MessageDigest digest;
+        try {
+            digest = MessageDigest.getInstance("SHA-256");
+        } catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException("SHA-256 알고리즘을 사용할 수 없습니다.", e);
         }
-        if (userRepository.existsByLoginId(request.loginId())) {
-            throw new DuplicateLoginIdException();
-        }
-    }
-
-    //정규화한 이메일 반환
-    private String normalizeEmail(String email) {
-        return email.trim().toLowerCase(Locale.ROOT);
+        byte[] hashBytes = digest.digest(refreshToken.getBytes(StandardCharsets.UTF_8));
+        String tokenHash = HexFormat.of().formatHex(hashBytes);
+        return tokenHash;
     }
 
     //데이터베이스에서 나는 오류가 이메일 때문인지 확인
@@ -109,9 +121,7 @@ public class UserService {
         int qualifier = name.lastIndexOf('.');
         if (qualifier >= 0 && indexDescription < 0) {
             String namespace = name.substring(0, qualifier);
-            if (!"users".equals(namespace)
-                    && !namespace.endsWith(".users")
-                    && !"public".equals(namespace)) {
+            if (!"users".equals(namespace) && !namespace.endsWith(".users") && !"public".equals(namespace)) {
                 return false;
             }
         }
@@ -120,19 +130,68 @@ public class UserService {
         return expectedConstraintName.equals(localName);
     }
 
+    public LoginResponse refresh(String token) {
+        Long userId;
+        JwtProvider.TokenIdentity identity;
+        try {
+            identity = jwtProvider.getRefreshIdentity(token);
+            userId = Long.valueOf(identity.userId());
+        } catch (RuntimeException e) {
+            throw new InvalidCredentialsException();
+        }
+        RefreshToken stored = refreshTokenRepository.findByUserIdForUpdate(userId)
+                .orElseThrow(InvalidCredentialsException::new);
+        if (stored.getExpiresAt().isBefore(LocalDateTime.now())
+                || !stored.getSessionId().equals(identity.sessionId())
+                || !MessageDigest.isEqual(stored.getTokenHash().getBytes(StandardCharsets.UTF_8),
+                        hashToken(token).getBytes(StandardCharsets.UTF_8))) {
+            throw new InvalidCredentialsException();
+        }
+        String sessionId = stored.getSessionId();
+        String refreshToken = jwtProvider.createRefreshToken(userId.toString(), sessionId);
+        stored.updateToken(hashToken(refreshToken), sessionId, LocalDateTime.now().plusDays(14));
+        return new LoginResponse(jwtProvider.createAccessToken(userId.toString(), sessionId), refreshToken);
+    }
+
+    public void logout(Long userId, String sessionId) {
+        RefreshToken stored = refreshTokenRepository.findByUserIdForUpdate(userId)
+                .orElseThrow(InvalidCredentialsException::new);
+        if (sessionId == null || !stored.getSessionId().equals(sessionId)) {
+            throw new InvalidCredentialsException();
+        }
+        refreshTokenRepository.delete(stored);
+    }
+
+    @Transactional
     public LoginResponse login(LoginRequest request) {
-        String email = normalizeEmail(request.email());
-        Optional<User> optionalUser = userRepository.findByEmail(email);
+        Optional<User> optionalUser = userRepository.findByUserName(request.loginId());
         if (optionalUser.isEmpty()) {
-            passwordEncoder.matches(request.password(), DUMMY_PASSWORD_HASH);
+            passwordEncoder.matches(request.password(), dummyPasswordHash);
             throw new InvalidCredentialsException();
         }
         User user = optionalUser.get();
-        if (!passwordEncoder.matches(request.password(), user.getPasswordHash())) {
+        if (!passwordEncoder.matches(request.password(), user.getPassword())) {
             throw new InvalidCredentialsException();
         }
-        String accessToken = jwtProvider.createAccessToken(user.getId().toString());
-        return new LoginResponse(accessToken);
+        Optional<RefreshToken> existingToken = refreshTokenRepository.findByUserIdForUpdate(user.getId());
+        String sessionId = UUID.randomUUID().toString();
+        String refreshToken = jwtProvider.createRefreshToken(user.getId().toString(),sessionId);
+        String tokenHash = hashToken(refreshToken);
+        LocalDateTime expiresAt = LocalDateTime.now().plusDays(14);
+        if (existingToken.isEmpty()) {
+            RefreshToken newToken = RefreshToken.builder()
+                    .userId(user.getId())
+                    .tokenHash(tokenHash)
+                    .sessionId(sessionId)
+                    .expiresAt(expiresAt)
+                    .build();
+            refreshTokenRepository.save(newToken);
+        } else {
+            RefreshToken token = existingToken.get();
+            token.updateToken(tokenHash,sessionId,expiresAt);
+        }
+        String accessToken = jwtProvider.createAccessToken(user.getId().toString(),sessionId);
+        return new LoginResponse(accessToken, refreshToken);
     }
 
 }

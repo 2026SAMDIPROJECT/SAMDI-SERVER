@@ -7,16 +7,11 @@ import jakarta.validation.constraints.Size;
 public record LoginRequest(
 
         @NotBlank
-        @Email
-        @Size(max = 254)
-        String email,
+        @Size(max = 50)
+        String loginId,
 
         @NotBlank
         String password
+
 ) {
-        public LoginRequest{
-                if (email != null) {
-                        email = email.trim();
-                }
-        }
 }

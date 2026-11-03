@@ -1,5 +1,7 @@
 package com.example.samdi.domain.user.service;
 
+import com.example.samdi.domain.auth.email.EmailVerificationService;
+import com.example.samdi.domain.auth.repository.RefreshTokenRepository;
 import com.example.samdi.domain.user.dto.request.LoginRequest;
 import com.example.samdi.domain.user.dto.request.SignupRequest;
 import com.example.samdi.domain.user.entity.User;
@@ -44,12 +46,13 @@ class UserServiceTest {
     private UserRepository userRepository;
     private PasswordEncoder passwordEncoder;
     private UserService userService;
+    private RefreshTokenRepository refreshTokenRepository;
 
     @BeforeEach
     void setUp() {
         userRepository = mock(UserRepository.class);
         passwordEncoder = mock(PasswordEncoder.class);
-        userService = new UserService(userRepository, passwordEncoder, mock(JwtProvider.class));
+        userService = new UserService(userRepository, passwordEncoder, mock(JwtProvider.class),refreshTokenRepository, mock(EmailVerificationService.class));
     }
 
     @ParameterizedTest
@@ -80,7 +83,7 @@ class UserServiceTest {
     @Test
     void signUpNormalizesUppercaseEmailBeforeSaving() {
         signUpSuccessfully(new SignupRequest(
-                "USER@EXAMPLE.COM", "Test1234!", "Test1234!", "tester"
+                "USER@EXAMPLE.COM", "Test1234!", "Test1234!", "tester", "A".repeat(43)
         ));
 
         assertSavedEmail("user@example.com");
@@ -89,7 +92,7 @@ class UserServiceTest {
     @Test
     void signUpTrimsEmailBeforeSaving() {
         signUpSuccessfully(new SignupRequest(
-                "  user@example.com  ", "Test1234!", "Test1234!", "tester"
+                "  user@example.com  ", "Test1234!", "Test1234!", "tester", "A".repeat(43)
         ));
 
         assertSavedEmail("user@example.com");
@@ -100,7 +103,7 @@ class UserServiceTest {
         when(userRepository.existsByEmail("user@example.com")).thenReturn(true);
 
         assertThrows(DuplicateEmailException.class, () -> userService.signup(new SignupRequest(
-                "USER@EXAMPLE.COM", "Test1234!", "Test1234!", "tester"
+                "USER@EXAMPLE.COM", "Test1234!", "Test1234!", "tester", "A".repeat(43)
         )));
 
         verify(userRepository).existsByEmail("user@example.com");
@@ -111,7 +114,7 @@ class UserServiceTest {
     @Test
     void signUpChecksPasswordMismatchBeforeEmailLookup() {
         assertThrows(PasswordMismatchException.class, () -> userService.signup(new SignupRequest(
-                "user@example.com", "Test1234!", "Different1234!", "tester"
+                "user@example.com", "Test1234!", "Different1234!", "tester", "A".repeat(43)
         )));
 
         verifyNoInteractions(userRepository, passwordEncoder);
@@ -119,14 +122,17 @@ class UserServiceTest {
 
     @ParameterizedTest
     @ValueSource(strings = {"Wrong1234!", "babi-dummy-password"})
-    void loginWithUnknownEmailRunsRealBCryptAndNeverIssuesToken(String password) {
-        when(userRepository.findByEmail("missing@example.com")).thenReturn(Optional.empty());
+    void loginWithUnknownLoginIdRunsRealBCryptAndNeverIssuesToken(String password) {
+        when(userRepository.findByUserName("missing-player")).thenReturn(Optional.empty());
         BCryptPasswordEncoder realEncoder = spy(new BCryptPasswordEncoder());
         JwtProvider jwtProvider = mock(JwtProvider.class);
-        UserService service = new UserService(userRepository, realEncoder, jwtProvider);
+        UserService service = new UserService(userRepository, realEncoder, jwtProvider,refreshTokenRepository, mock(EmailVerificationService.class));
+
+        org.springframework.test.util.ReflectionTestUtils.setField(service, "dummyPasswordHash",
+                "$2a$10$G48i72gfQyJ7URWzsalGbeZsaw79R8FDiHbAQBaAoYOLgHqoRBQiG");
 
         assertThrows(InvalidCredentialsException.class, () -> service.login(
-                new LoginRequest("  MISSING@EXAMPLE.COM  ", password)
+                new LoginRequest("missing-player", password)
         ));
 
         ArgumentCaptor<String> hashCaptor = ArgumentCaptor.forClass(String.class);
@@ -134,13 +140,13 @@ class UserServiceTest {
         // A positive check proves the captured value is an actual hash, not just BCrypt-shaped text.
         assertTrue(BCrypt.checkpw("babi-dummy-password", hashCaptor.getValue()));
         verify(realEncoder, never()).encode(any());
-        verify(userRepository).findByEmail("missing@example.com");
+        verify(userRepository).findByUserName("missing-player");
         verifyNoInteractions(jwtProvider);
     }
 
     @Test
     void signUpPreventsDuplicateLoginId() {
-        when(userRepository.existsByLoginId("tester")).thenReturn(true);
+        when(userRepository.findByUserName("tester")).thenReturn(Optional.of(mock(User.class)));
 
         assertThrows(DuplicateLoginIdException.class, () -> userService.signup(signupRequest()));
 
@@ -184,20 +190,20 @@ class UserServiceTest {
     }
 
     private SignupRequest signupRequest() {
-        return new SignupRequest("signup@example.com", "Test1234!", "Test1234!", "tester");
+        return new SignupRequest("signup@example.com", "Test1234!", "Test1234!", "tester", "A".repeat(43));
     }
 
     private static Stream<String> emailConstraintNames() {
         return Stream.of(
-                User.EMAIL_UNIQUE_CONSTRAINT,
-                "users." + User.EMAIL_UNIQUE_CONSTRAINT,
-                User.EMAIL_UNIQUE_CONSTRAINT,
-                "users." + User.EMAIL_UNIQUE_CONSTRAINT,
-                "babi.users." + User.EMAIL_UNIQUE_CONSTRAINT,
-                "PUBLIC." + User.EMAIL_UNIQUE_CONSTRAINT.toUpperCase(Locale.ROOT)
-                        + " INDEX PUBLIC." + User.EMAIL_UNIQUE_CONSTRAINT.toUpperCase(Locale.ROOT) + "_INDEX_6",
-                "PUBLIC." + User.EMAIL_UNIQUE_CONSTRAINT.toUpperCase(Locale.ROOT)
-                        + " INDEX PUBLIC." + User.EMAIL_UNIQUE_CONSTRAINT.toUpperCase(Locale.ROOT) + "_INDEX_6"
+                "uq_users_email",
+                "users." + "uq_users_email",
+                "uq_users_email",
+                "users." + "uq_users_email",
+                "babi.users." + "uq_users_email",
+                "PUBLIC." + "uq_users_email".toUpperCase(Locale.ROOT)
+                        + " INDEX PUBLIC." + "uq_users_email".toUpperCase(Locale.ROOT) + "_INDEX_6",
+                "PUBLIC." + "uq_users_email".toUpperCase(Locale.ROOT)
+                        + " INDEX PUBLIC." + "uq_users_email".toUpperCase(Locale.ROOT) + "_INDEX_6"
         );
     }
 
@@ -207,11 +213,11 @@ class UserServiceTest {
                 null,
                 "backup_email",
                 "email_archive",
-                "orders." + User.EMAIL_UNIQUE_CONSTRAINT,
-                "babi.orders." + User.EMAIL_UNIQUE_CONSTRAINT,
-                "public.other_constraint INDEX public." + User.EMAIL_UNIQUE_CONSTRAINT + "_INDEX_6",
-                "users." + User.EMAIL_UNIQUE_CONSTRAINT + "_other",
-                "public." + User.EMAIL_UNIQUE_CONSTRAINT + "_other INDEX public.some_index"
+                "orders." + "uq_users_email",
+                "babi.orders." + "uq_users_email",
+                "public.other_constraint INDEX public." + "uq_users_email" + "_INDEX_6",
+                "users." + "uq_users_email" + "_other",
+                "public." + "uq_users_email" + "_other INDEX public.some_index"
         );
     }
 

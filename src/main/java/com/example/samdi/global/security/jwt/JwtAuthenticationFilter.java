@@ -8,13 +8,11 @@ import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
-import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContext;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
-import java.util.List;
 
 public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
@@ -36,18 +34,19 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             return;
         }
         String token = authorization.substring(7);
-        String userId;
+        JwtProvider.TokenIdentity identity;
         try {
-            userId = jwtProvider.getUserId(token);
+            identity = jwtProvider.getAccessIdentity(token);
         } catch (JwtException | IllegalArgumentException e) {
             securityErrorResponseWriter.writeErrorResponse(response,ErrorCode.INVALID_TOKEN);
             return;
         }
 
-        UsernamePasswordAuthenticationToken authentication =
-                new UsernamePasswordAuthenticationToken(userId,null,List.of());
+        String userId = identity.userId();
+        JwtAuthentication authentication = new JwtAuthentication(userId);
 
         request.setAttribute("userId",userId);
+        request.setAttribute("sessionId", identity.sessionId());
         SecurityContext context = SecurityContextHolder.createEmptyContext();
         context.setAuthentication(authentication);
         SecurityContextHolder.setContext(context);
@@ -59,7 +58,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     protected boolean shouldNotFilter(HttpServletRequest request) {
         String path = request.getServletPath();
         return path.equals(SecurityPaths.SIGNUP)
-                || path.equals(SecurityPaths.LOGIN) || "OPTIONS".equals(request.getMethod())
+                || path.equals(SecurityPaths.LOGIN) || path.equals("/auth/refresh") || path.equals("/auth/email/send") || path.equals("/auth/email/verify") || "OPTIONS".equals(request.getMethod())
                 || path.equals("/swagger-ui.html") || path.startsWith("/swagger-ui/")
                 || path.equals("/v3/api-docs") || path.startsWith("/v3/api-docs/");
     }

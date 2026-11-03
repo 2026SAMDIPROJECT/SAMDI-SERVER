@@ -1,4 +1,9 @@
 spring:
+  mail:
+    host: 127.0.0.1
+    port: 1
+    username: test@example.invalid
+    password: test
   datasource:
     url: jdbc:h2:mem:samdi-test;MODE=MySQL;DB_CLOSE_DELAY=-1;DATABASE_TO_LOWER=TRUE
     username: sa
@@ -10,6 +15,10 @@ spring:
 
 samdi:
   test-database-url: jdbc:h2:mem:samdi-test;MODE=MySQL;DB_CLOSE_DELAY=-1;DATABASE_TO_LOWER=TRUE
+
+email:
+  verification:
+    secret: test-only-secret
 
 jwt:
   secret: "${random.uuid}${random.uuid}"

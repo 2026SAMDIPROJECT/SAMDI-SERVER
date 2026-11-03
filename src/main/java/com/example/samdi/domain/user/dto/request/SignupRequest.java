@@ -17,13 +17,17 @@ public record SignupRequest(
         )
         String password,
 
-        @Size(max = 20)
         @NotBlank
+        @Size(max = 20)
         String passwordConfirm,
 
         @NotBlank
         @Size(max = 50)
-        String loginId
+        String loginId,
+
+        @NotBlank
+        @Pattern(regexp = "[A-Za-z0-9_-]{43}")
+        String verificationToken
 
 ) {
     public SignupRequest {

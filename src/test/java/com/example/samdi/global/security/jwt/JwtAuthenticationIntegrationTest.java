@@ -1,6 +1,10 @@
 package com.example.samdi.global.security.jwt;
 
 import com.example.samdi.domain.user.controller.UserController;
+import com.example.samdi.domain.auth.email.EmailVerificationService;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import com.example.samdi.domain.user.exception.UserErrorCode;
+import com.example.samdi.global.exception.BaseErrorCode;
 import com.example.samdi.global.exception.ErrorCode;
 import com.example.samdi.global.security.SecurityPaths;
 import jakarta.servlet.Filter;
@@ -53,6 +57,9 @@ import static org.mockito.Mockito.verify;
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @Import(JwtAuthenticationIntegrationTest.JwtTestConfiguration.class)
 class JwtAuthenticationIntegrationTest {
+
+    @MockitoBean
+    private EmailVerificationService emailVerificationService;
 
     @LocalServerPort
     private int port;
@@ -115,7 +122,7 @@ class JwtAuthenticationIntegrationTest {
     @Test
     void validJwtReachesProtectedApiWithUserId() throws Exception {
         var request = request("/test/auth")
-                .header("Authorization", "Bearer " + jwtProvider.createAccessToken("42"))
+                .header("Authorization", "Bearer " + jwtProvider.createAccessToken("42", "test-session"))
                 .GET().build();
 
         var response = client.send(request, HttpResponse.BodyHandlers.ofString());
@@ -142,7 +149,7 @@ class JwtAuthenticationIntegrationTest {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"/auth/login", "/auth/signup"})
+    @ValueSource(strings = {"/auth/login", "/auth/signup", "/auth/email/send"})
     void publicAuthEndpointsReachValidationWithoutJwt(String path) throws Exception {
         var response = client.send(request(path).header("Content-Type", "application/json")
                         .POST(HttpRequest.BodyPublishers.ofString("{}")).build(),
@@ -155,14 +162,14 @@ class JwtAuthenticationIntegrationTest {
 
     @Test
     void validRequestParsesJwtOnlyOnce() throws Exception {
-        String token = jwtProvider.createAccessToken("43");
+        String token = jwtProvider.createAccessToken("43", "test-session");
         var response = client.send(request("/test/auth")
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + token).GET().build(),
                 HttpResponse.BodyHandlers.ofString());
 
         assertEquals(200, response.statusCode());
         assertEquals("인증된 사용자 ID: 43", response.body());
-        verify(jwtProvider, times(1)).getUserId(token);
+        verify(jwtProvider, times(1)).getAccessIdentity(token);
         verify(jwtAuthenticationFilter, times(1)).doFilter(any(), any(), any());
     }
 
@@ -179,7 +186,7 @@ class JwtAuthenticationIntegrationTest {
     @Test
     void authenticatedDownstreamAccessDeniedReturns403() throws Exception {
         var response = client.send(request("/test/filter-denied")
-                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + jwtProvider.createAccessToken("42"))
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + jwtProvider.createAccessToken("42", "test-session"))
                         .GET().build(), HttpResponse.BodyHandlers.ofString());
 
         assertErrorResponse(response, ErrorCode.FORBIDDEN);
@@ -189,7 +196,7 @@ class JwtAuthenticationIntegrationTest {
     @Test
     void authenticatedControllerAccessDeniedReturns403() throws Exception {
         var response = client.send(request("/test/controller-denied")
-                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + jwtProvider.createAccessToken("42"))
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + jwtProvider.createAccessToken("42", "test-session"))
                         .GET().build(), HttpResponse.BodyHandlers.ofString());
 
         assertErrorResponse(response, ErrorCode.FORBIDDEN);
@@ -200,7 +207,7 @@ class JwtAuthenticationIntegrationTest {
         String email = "jwt-" + UUID.randomUUID() + "@example.com";
         String signupBody = objectMapper.writeValueAsString(Map.of(
                 "email", email, "password", "Test1234!",
-                "passwordConfirm", "Test1234!", "loginId", "jwt-tester"
+                "passwordConfirm", "Test1234!", "loginId", "jwt-tester", "verificationToken", "A".repeat(43)
         ));
         var signupResponse = client.send(request("/auth/signup")
                         .header(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE)
@@ -210,11 +217,10 @@ class JwtAuthenticationIntegrationTest {
         var signupJson = objectMapper.readTree(signupResponse.body());
         assertTrue(signupJson.get("success").asBoolean());
         assertEquals(email, signupJson.get("data").get("email").asString());
-        assertNotNull(signupJson.get("data").get("userId"));
-        String userId = Long.toString(signupJson.get("data").get("userId").asLong());
+        assertFalse(signupJson.get("data").hasNonNull("userId"));
 
         String loginBody = objectMapper.writeValueAsString(Map.of(
-                "email", email, "password", "Test1234!"
+                "loginId", "jwt-tester", "verificationToken", "A".repeat(43), "password", "Test1234!"
         ));
         var loginResponse = client.send(request("/auth/login")
                         .header(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE)
@@ -230,21 +236,58 @@ class JwtAuthenticationIntegrationTest {
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + token).GET().build(),
                 HttpResponse.BodyHandlers.ofString());
         assertEquals(200, protectedResponse.statusCode());
-        assertEquals("인증된 사용자 ID: " + userId, protectedResponse.body());
+        assertEquals("인증된 사용자 ID: " + jwtProvider.getUserId(token), protectedResponse.body());
 
         var anonymousResponse = client.send(request("/test/auth").GET().build(),
                 HttpResponse.BodyHandlers.ofString());
         assertErrorResponse(anonymousResponse, ErrorCode.UNAUTHORIZED);
     }
 
+    @Test
+    void staleAccessCannotLogoutNewSessionAndRotationKeepsSession() throws Exception {
+        String loginId = "session-" + UUID.randomUUID();
+        String signupBody = objectMapper.writeValueAsString(Map.of(
+                "email", loginId + "@example.com", "loginId", loginId,
+                "password", "Test1234!", "passwordConfirm", "Test1234!", "verificationToken", "A".repeat(43)));
+        var signup = client.send(request("/auth/signup").header(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE)
+                        .POST(HttpRequest.BodyPublishers.ofString(signupBody)).build(), HttpResponse.BodyHandlers.ofString());
+        assertEquals(201, signup.statusCode());
+        String loginBody = objectMapper.writeValueAsString(Map.of("loginId", loginId, "password", "Test1234!"));
+        var first = client.send(request("/auth/login").header(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE)
+                        .POST(HttpRequest.BodyPublishers.ofString(loginBody)).build(), HttpResponse.BodyHandlers.ofString());
+        var second = client.send(request("/auth/login").header(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE)
+                        .POST(HttpRequest.BodyPublishers.ofString(loginBody)).build(), HttpResponse.BodyHandlers.ofString());
+        assertEquals(200, first.statusCode());
+        assertEquals(200, second.statusCode());
+        var firstData = objectMapper.readTree(first.body()).get("data");
+        var secondData = objectMapper.readTree(second.body()).get("data");
+        var oldLogout = client.send(request("/auth/logout")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + firstData.get("accessToken").asString())
+                        .POST(HttpRequest.BodyPublishers.noBody()).build(), HttpResponse.BodyHandlers.ofString());
+        assertEquals(401, oldLogout.statusCode());
+        String refreshBody = objectMapper.writeValueAsString(Map.of("refreshToken", secondData.get("refreshToken").asString()));
+        var refreshed = client.send(request("/auth/refresh").header(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE)
+                        .POST(HttpRequest.BodyPublishers.ofString(refreshBody)).build(), HttpResponse.BodyHandlers.ofString());
+        assertEquals(200, refreshed.statusCode());
+        String rotatedToken = objectMapper.readTree(refreshed.body()).get("data").get("refreshToken").asString();
+        var logout = client.send(request("/auth/logout")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + secondData.get("accessToken").asString())
+                        .POST(HttpRequest.BodyPublishers.noBody()).build(), HttpResponse.BodyHandlers.ofString());
+        assertEquals(200, logout.statusCode());
+        var rejected = client.send(request("/auth/refresh").header(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE)
+                        .POST(HttpRequest.BodyPublishers.ofString(objectMapper.writeValueAsString(Map.of("refreshToken", rotatedToken)))).build(),
+                HttpResponse.BodyHandlers.ofString());
+        assertEquals(401, rejected.statusCode());
+    }
+
     @ParameterizedTest
     @ValueSource(booleans = {false, true})
-    void unknownEmailAndWrongPasswordKeepSame401Response(boolean registered) throws Exception {
+    void unknownLoginIdAndWrongPasswordKeepSame401Response(boolean registered) throws Exception {
         String email = "login-failure-" + UUID.randomUUID() + "@example.com";
         if (registered) {
             String signupBody = objectMapper.writeValueAsString(Map.of(
                     "email", email, "password", "Correct1234!",
-                    "passwordConfirm", "Correct1234!", "loginId", "login-tester"
+                    "passwordConfirm", "Correct1234!", "loginId", "login-tester", "verificationToken", "A".repeat(43)
             ));
             var signupResponse = client.send(request("/auth/signup")
                             .header(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE)
@@ -254,14 +297,14 @@ class JwtAuthenticationIntegrationTest {
         }
 
         String loginBody = objectMapper.writeValueAsString(Map.of(
-                "email", email, "password", "Wrong1234!"
+                "loginId", "login-tester", "verificationToken", "A".repeat(43), "password", "Wrong1234!"
         ));
         var response = client.send(request("/auth/login")
                         .header(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE)
                         .POST(HttpRequest.BodyPublishers.ofString(loginBody)).build(),
                 HttpResponse.BodyHandlers.ofString());
 
-        assertErrorResponse(response, ErrorCode.INVALID_CREDENTIALS);
+        assertErrorResponse(response, UserErrorCode.INVALID_CREDENTIALS);
         assertEquals(401, response.statusCode());
         assertEquals("이메일 또는 비밀번호가 올바르지 않습니다.",
                 objectMapper.readTree(response.body()).get("message").asString());
@@ -269,11 +312,11 @@ class JwtAuthenticationIntegrationTest {
 
     @ParameterizedTest
     @ValueSource(strings = {
-            "{\"email\":\"invalid-email\",\"password\":\"Test1234!\"}",
+            "{\"loginId\":\"\",\"password\":\"Test1234!\"}",
             "{\"password\":\"Test1234!\"}",
-            "{\"email\":\"test@example.com\"}",
-            "{\"email\":\"   \" ,\"password\":\"Test1234!\"}",
-            "{\"email\":\"test@example.com\",\"password\":\"\"}"
+            "{\"loginId\":\"tester\"}",
+            "{\"loginId\":\"   \" ,\"password\":\"Test1234!\"}",
+            "{\"loginId\":\"tester\",\"password\":\"\"}"
     })
     void invalidLoginRequestKeeps400Response(String body) throws Exception {
         var response = client.send(request("/auth/login")
@@ -285,20 +328,20 @@ class JwtAuthenticationIntegrationTest {
         var json = objectMapper.readTree(response.body());
         assertFalse(json.get("success").asBoolean());
         assertEquals("VALIDATION_ERROR", json.get("error").get("code").asString());
-        assertTrue(json.get("data").isNull());
+        assertTrue(!json.hasNonNull("data"));
         assertFalse(json.get("error").get("details").isEmpty());
     }
 
-    private void assertErrorResponse(HttpResponse<String> response, ErrorCode errorCode) throws Exception {
+    private void assertErrorResponse(HttpResponse<String> response, BaseErrorCode errorCode) throws Exception {
         assertEquals(errorCode.getHttpStatus().value(), response.statusCode(), response.body());
         assertTrue(MediaType.APPLICATION_JSON.isCompatibleWith(MediaType.parseMediaType(
                 response.headers().firstValue(HttpHeaders.CONTENT_TYPE).orElseThrow()
         )));
         var body = objectMapper.readTree(response.body());
         assertFalse(body.get("success").asBoolean());
-        assertEquals(errorCode.name(), body.get("error").get("code").asString());
+        assertEquals(errorCode.getCode(), body.get("error").get("code").asString());
         assertEquals(errorCode.getMessage(), body.get("message").asString());
-        assertTrue(body.get("data").isNull());
+        assertTrue(!body.hasNonNull("data"));
         assertTrue(body.get("error").get("details").isArray());
         assertTrue(body.get("error").get("details").isEmpty());
         if (errorCode == ErrorCode.UNAUTHORIZED || errorCode == ErrorCode.INVALID_TOKEN) {

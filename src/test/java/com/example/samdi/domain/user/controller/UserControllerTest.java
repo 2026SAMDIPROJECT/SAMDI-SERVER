@@ -1,5 +1,7 @@
 package com.example.samdi.domain.user.controller;
 
+import com.example.samdi.domain.auth.email.EmailVerificationService;
+import com.example.samdi.domain.auth.repository.RefreshTokenRepository;
 import com.example.samdi.domain.user.dto.request.LoginRequest;
 import com.example.samdi.domain.user.dto.response.LoginResponse;
 import com.example.samdi.domain.user.dto.response.SignupResponse;
@@ -120,14 +122,14 @@ class UserControllerTest {
     void passwordWithExactly20CharactersIsAccepted() throws Exception {
         String password = "a".repeat(20);
         when(userService.signup(any()))
-                .thenReturn(new SignupResponse(1L, "test@example.com", "tester"));
+                .thenReturn(new SignupResponse("test@example.com", "tester"));
 
         mockMvc.perform(post(SIGNUP_URL)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(signupJson(password)))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.success").value(true))
-                .andExpect(jsonPath("$.data.userId").value(1L))
+                .andExpect(jsonPath("$.data.userId").doesNotExist())
                 .andExpect(jsonPath("$.data.email").value("test@example.com"));
 
         verify(userService).signup(any());
@@ -149,12 +151,14 @@ class UserControllerTest {
     void signupWithPaddedUppercaseEmailStoresNormalizedEmail() throws Exception {
         UserRepository userRepository = mock(UserRepository.class);
         PasswordEncoder passwordEncoder = mock(PasswordEncoder.class);
+        RefreshTokenRepository refreshTokenRepository = mock(RefreshTokenRepository.class);
+
         when(passwordEncoder.encode(any())).thenReturn("encoded-password");
         when(userRepository.saveAndFlush(any(User.class)))
                 .thenAnswer(invocation -> invocation.getArgument(0));
 
         MockMvc signupMockMvc = MockMvcBuilders
-                .standaloneSetup(new UserController(new UserService(userRepository, passwordEncoder, mock(JwtProvider.class))))
+                .standaloneSetup(new UserController(new UserService(userRepository, passwordEncoder, mock(JwtProvider.class),refreshTokenRepository, mock(EmailVerificationService.class))))
                 .setControllerAdvice(new GlobalExceptionHandler())
                 .build();
 
@@ -183,14 +187,14 @@ class UserControllerTest {
     }
 
     @Test
-    void loginEmailWith321CharactersReturnsValidationErrorBeforeCallingService() throws Exception {
+    void loginIdWith321CharactersReturnsValidationErrorBeforeCallingService() throws Exception {
         String email = "a".repeat(64) + "@" + "b".repeat(252) + ".com";
         assertEquals(321, email.length());
 
         mockMvc.perform(post(LOGIN_URL)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(loginJson(email, "Test1234!")))
-                .andExpect(sizeValidationError("email"));
+                .andExpect(sizeValidationError("loginId"));
 
         verifyNoInteractions(userService);
     }
@@ -198,7 +202,7 @@ class UserControllerTest {
     @Test
     void loginPasswordWith21CharactersPassesValidationAndCallsService() throws Exception {
         String password = "a".repeat(21);
-        when(userService.login(any())).thenReturn(new LoginResponse("test-access-token"));
+        when(userService.login(any())).thenReturn(new LoginResponse("test-access-token", "test-refresh-token"));
 
         mockMvc.perform(post(LOGIN_URL)
                         .contentType(MediaType.APPLICATION_JSON)
@@ -218,7 +222,8 @@ class UserControllerTest {
                   "email": "test@example.com",
                   "password": "Test1234!",
                   "passwordConfirm": "%s",
-                  "loginId": "tester"
+                  "loginId": "tester",
+                  "verificationToken": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
                 }
                 """.formatted("a".repeat(21));
 
@@ -233,14 +238,14 @@ class UserControllerTest {
     @Test
     void loginPasswordWithExactly20CharactersReturnsExistingTokenResponse() throws Exception {
         String password = "a".repeat(20);
-        when(userService.login(any())).thenReturn(new LoginResponse("test-access-token"));
+        when(userService.login(any())).thenReturn(new LoginResponse("test-access-token", "test-refresh-token"));
 
         mockMvc.perform(post(LOGIN_URL)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(loginJson("test@example.com", password)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
-                .andExpect(jsonPath("$.message").value("로그인이 완료되었습니다."))
+                .andExpect(jsonPath("$.message").value("로그인에 성공했습니다."))
                 .andExpect(jsonPath("$.data.accessToken").value("test-access-token"))
                 .andExpect(jsonPath("$.error").doesNotExist());
 
@@ -256,6 +261,15 @@ class UserControllerTest {
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.error.code").value("DUPLICATE_LOGIN_ID"))
                 .andExpect(jsonPath("$.error.details[0].field").value("loginId"));
+    }
+
+    @Test
+    void missingVerificationTokenIsRejected() throws Exception {
+        String body = "{\"email\":\"test@example.com\",\"password\":\"Test1234!\",\"passwordConfirm\":\"Test1234!\",\"loginId\":\"tester\"}";
+        mockMvc.perform(post(SIGNUP_URL).contentType(MediaType.APPLICATION_JSON).content(body))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error.details[*].field").value(hasItem("verificationToken")));
+        verifyNoInteractions(userService);
     }
 
     @Test
@@ -288,7 +302,7 @@ class UserControllerTest {
                 .andExpect(sizeValidationError("email"));
         mockMvc.perform(post(LOGIN_URL).contentType(MediaType.APPLICATION_JSON)
                         .content(loginJson(email, "Test1234!")))
-                .andExpect(sizeValidationError("email"));
+                .andExpect(sizeValidationError("loginId"));
 
         verifyNoInteractions(userService);
     }
@@ -298,7 +312,7 @@ class UserControllerTest {
             status().isBadRequest().match(result);
             jsonPath("$.success").value(false).match(result);
             jsonPath("$.message").value(ErrorCode.VALIDATION_ERROR.getMessage()).match(result);
-            jsonPath("$.data").value(nullValue()).match(result);
+            jsonPath("$.data").doesNotExist().match(result);
             jsonPath("$.error.code").value("VALIDATION_ERROR").match(result);
             jsonPath("$.error.details[*].field").value(hasItem(field)).match(result);
             var exception = assertInstanceOf(MethodArgumentNotValidException.class, result.getResolvedException());
@@ -309,7 +323,7 @@ class UserControllerTest {
 
     private String loginJson(String email, String password) {
         return """
-                {"email": "%s", "password": "%s"}
+                {"loginId": "%s", "password": "%s"}
                 """.formatted(email, password);
     }
 
@@ -323,7 +337,8 @@ class UserControllerTest {
                   "email": "%s",
                   "password": "%s",
                   "passwordConfirm": "%s",
-                  "loginId": "tester"
+                  "loginId": "tester",
+                  "verificationToken": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
                 }
                 """.formatted(email, password, password);
     }

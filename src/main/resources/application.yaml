@@ -2,6 +2,20 @@ spring:
   application:
     name: SAMDI
 
+  mail:
+    host: ${MAIL_HOST:smtp.gmail.com}
+    port: ${MAIL_PORT:587}
+    username: ${MAIL_USERNAME}
+    password: ${MAIL_PASSWORD}
+    properties:
+      mail.smtp.auth: true
+      mail.smtp.starttls.enable: true
+      mail.smtp.starttls.required: true
+      mail.smtp.ssl.checkserveridentity: true
+      mail.smtp.connectiontimeout: 5000
+      mail.smtp.timeout: 5000
+      mail.smtp.writetimeout: 5000
+
   datasource:
     url: ${DB_URL}
     username: ${DB_USERNAME}
@@ -13,6 +27,15 @@ spring:
       ddl-auto: validate
     open-in-view: false
 
+email:
+  verification:
+    secret: ${EMAIL_VERIFICATION_SECRET}
+
 jwt:
   secret: ${JWT_SECRET}
-  access-token-expiration-minutes: ${JWT_ACCESS_TOKEN_EXPIRATION_MINUTES:30}
+  access-token-expiration-minutes: ${JWT_ACCESS_TOKEN_EXPIRATION_MINUTES:60}
+  refresh-token-expiration-minutes: ${JWT_REFRESH_TOKEN_EXPIRATION_MINUTES:20160}
+
+samdi:
+  security:
+    dummy-password-hash: "$2a$10$G48i72gfQyJ7URWzsalGbeZsaw79R8FDiHbAQBaAoYOLgHqoRBQiG"
