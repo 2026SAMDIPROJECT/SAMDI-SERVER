@@ -11,6 +11,8 @@ import org.springframework.stereotype.Component;
 import javax.crypto.SecretKey;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
+import java.time.LocalDateTime;
+import java.time.ZoneId;
 
 import java.time.temporal.ChronoUnit;
 import java.util.Date;
@@ -104,6 +106,10 @@ public class JwtProvider {
 
     public String createRefreshToken(String id, String sessionId) {
         return createToken(id,refreshTokenExpirationMinutes,"refresh",sessionId);
+    }
+
+    public LocalDateTime getRefreshTokenExpiration(String token) {
+        return LocalDateTime.ofInstant(validateToken(token, "refresh").getExpiration().toInstant(), ZoneId.systemDefault());
     }
 
     public String getUserId(String token) {

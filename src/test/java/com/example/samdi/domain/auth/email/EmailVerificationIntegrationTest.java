@@ -180,6 +180,41 @@ class EmailVerificationIntegrationTest {
     }
 
     @Autowired private com.example.samdi.global.security.jwt.JwtProvider jwtProvider;
+    @org.springframework.beans.factory.annotation.Value("${jwt.refresh-token-expiration-minutes}") private long refreshExpirationMinutes;
+
+    @Test
+    void refreshExpirationMatchesJwtAfterLoginAndRotation() {
+        String email = java.util.UUID.randomUUID() + "@example.com";
+        String loginId = java.util.UUID.randomUUID().toString();
+        userService.signup(signup(email, loginId, verifiedProof(email)));
+        var login = userService.login(new com.example.samdi.domain.user.dto.request.LoginRequest(loginId, "Test1234!"));
+        Long userId = Long.valueOf(jwtProvider.getUserId(login.accessToken()));
+        assertRefreshExpiration(login.refreshToken(), userId);
+        var rotated = userService.refresh(login.refreshToken());
+        assertNotEquals(login.refreshToken(), rotated.refreshToken());
+        assertRefreshExpiration(rotated.refreshToken(), userId);
+        assertThrows(com.example.samdi.domain.user.exception.InvalidCredentialsException.class,
+                () -> userService.refresh(login.refreshToken()));
+    }
+
+    private void assertRefreshExpiration(String token, Long userId) {
+        var key = (javax.crypto.SecretKey) org.springframework.test.util.ReflectionTestUtils.getField(jwtProvider, "secretKey");
+        var claims = io.jsonwebtoken.Jwts.parser().verifyWith(key).build().parseSignedClaims(token).getPayload();
+        assertEquals(java.time.Duration.ofMinutes(refreshExpirationMinutes),
+                java.time.Duration.between(claims.getIssuedAt().toInstant(), claims.getExpiration().toInstant()));
+        LocalDateTime expected = LocalDateTime.ofInstant(claims.getExpiration().toInstant(), java.time.ZoneId.systemDefault());
+        assertEquals(expected, jdbc.queryForObject("SELECT expires_at FROM refresh_tokens WHERE user_id = ?", LocalDateTime.class, userId));
+    }
+
+    @Test
+    void expiredRefreshJwtIsRejected() {
+        var key = (javax.crypto.SecretKey) org.springframework.test.util.ReflectionTestUtils.getField(jwtProvider, "secretKey");
+        String expired = io.jsonwebtoken.Jwts.builder().subject("1")
+                .expiration(java.util.Date.from(java.time.Instant.now().minusSeconds(60)))
+                .claim("type", "refresh").claim("sessionId", "expired-test").signWith(key).compact();
+        assertThrows(com.example.samdi.domain.user.exception.InvalidCredentialsException.class,
+                () -> userService.refresh(expired));
+    }
 
     @Test
     void earlierSessionCannotLogOutLatestSessionAndRotationKeepsSession() {

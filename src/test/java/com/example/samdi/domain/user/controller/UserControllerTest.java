@@ -158,7 +158,7 @@ class UserControllerTest {
                 .thenAnswer(invocation -> invocation.getArgument(0));
 
         MockMvc signupMockMvc = MockMvcBuilders
-                .standaloneSetup(new UserController(new UserService(userRepository, passwordEncoder, mock(JwtProvider.class),refreshTokenRepository, mock(EmailVerificationService.class))))
+                .standaloneSetup(new UserController(new UserService(userRepository, passwordEncoder, mock(JwtProvider.class),refreshTokenRepository, mock(EmailVerificationService.class), mock(com.example.samdi.domain.user.service.LoginAttemptService.class))))
                 .setControllerAdvice(new GlobalExceptionHandler())
                 .build();
 
@@ -209,7 +209,8 @@ class UserControllerTest {
                         .content(loginJson("test@example.com", password)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
-                .andExpect(jsonPath("$.data.accessToken").value("test-access-token"))
+                .andExpect(header().string("Authorization", "Bearer test-access-token"))
+                .andExpect(jsonPath("$.data").doesNotExist())
                 .andExpect(jsonPath("$.error").doesNotExist());
 
         verify(userService).login(new LoginRequest("test@example.com", password));
@@ -246,7 +247,8 @@ class UserControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
                 .andExpect(jsonPath("$.message").value("로그인에 성공했습니다."))
-                .andExpect(jsonPath("$.data.accessToken").value("test-access-token"))
+                .andExpect(header().string("Authorization", "Bearer test-access-token"))
+                .andExpect(jsonPath("$.data").doesNotExist())
                 .andExpect(jsonPath("$.error").doesNotExist());
 
         verify(userService).login(new LoginRequest("test@example.com", password));

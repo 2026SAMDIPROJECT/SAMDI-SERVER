@@ -84,7 +84,7 @@ class MariaDbUserIntegrationTest {
         UserRepository repository = mock(UserRepository.class, delegatesTo(userRepository));
         doReturn(false).when(repository).existsByEmail(anyString());
         doReturn(java.util.Optional.empty()).when(repository).findByUserName(anyString());
-        UserService service = new UserService(repository, passwordEncoder, jwtProvider,refreshTokenRepository, mock(EmailVerificationService.class));
+        UserService service = new UserService(repository, passwordEncoder, jwtProvider,refreshTokenRepository, mock(EmailVerificationService.class), mock(com.example.samdi.domain.user.service.LoginAttemptService.class));
 
         assertThrows(DuplicateEmailException.class, () -> service.signup(
                 new SignupRequest(email, "Test1234!", "Test1234!", UUID.randomUUID().toString(), "A".repeat(43))));

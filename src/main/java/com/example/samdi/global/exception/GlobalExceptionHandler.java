@@ -75,6 +75,11 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
         );
     }
 
+    @ExceptionHandler(LoginRateLimitException.class)
+    public ResponseEntity<ApiResponse<Void>> handleLoginRateLimit(LoginRateLimitException e) {
+        return createErrorResponse(UserErrorCode.LOGIN_RATE_LIMITED, List.of());
+    }
+
     @ExceptionHandler(AccessDeniedException.class)
     public ResponseEntity<ApiResponse<Void>> handleAccessDenied(
             AccessDeniedException e

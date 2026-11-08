@@ -39,3 +39,9 @@ jwt:
 samdi:
   security:
     dummy-password-hash: "$2a$10$G48i72gfQyJ7URWzsalGbeZsaw79R8FDiHbAQBaAoYOLgHqoRBQiG"
+    login:
+      max-failures: ${LOGIN_MAX_FAILURES:5}
+      window-minutes: ${LOGIN_WINDOW_MINUTES:5}
+      block-minutes: ${LOGIN_BLOCK_MINUTES:5}
+      cleanup-interval: ${LOGIN_CLEANUP_INTERVAL:PT10M}
+      cleanup-batch-size: ${LOGIN_CLEANUP_BATCH_SIZE:100}

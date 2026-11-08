@@ -8,6 +8,7 @@ import com.example.samdi.domain.user.dto.request.SignupRequest;
 import com.example.samdi.domain.user.dto.response.LoginResponse;
 import com.example.samdi.domain.user.dto.response.SignupResponse;
 import com.example.samdi.domain.user.entity.User;
+import com.example.samdi.domain.user.entity.LoginAttempt;
 import com.example.samdi.domain.user.exception.DuplicateEmailException;
 import com.example.samdi.domain.user.exception.DuplicateLoginIdException;
 import com.example.samdi.domain.user.exception.InvalidCredentialsException;
@@ -42,6 +43,7 @@ public class UserService {
     private final JwtProvider jwtProvider;
     private final RefreshTokenRepository refreshTokenRepository;
     private final EmailVerificationService emailVerificationService;
+    private final LoginAttemptService loginAttemptService;
     @Value("${samdi.security.dummy-password-hash}")
     private String dummyPasswordHash;
     private static final String EMAIL_UNIQUE_CONSTRAINT = "uq_users_email";
@@ -149,7 +151,7 @@ public class UserService {
         }
         String sessionId = stored.getSessionId();
         String refreshToken = jwtProvider.createRefreshToken(userId.toString(), sessionId);
-        stored.updateToken(hashToken(refreshToken), sessionId, LocalDateTime.now().plusDays(14));
+        stored.updateToken(hashToken(refreshToken), sessionId, jwtProvider.getRefreshTokenExpiration(refreshToken));
         return new LoginResponse(jwtProvider.createAccessToken(userId.toString(), sessionId), refreshToken);
     }
 
@@ -162,22 +164,26 @@ public class UserService {
         refreshTokenRepository.delete(stored);
     }
 
-    @Transactional
+    @Transactional(noRollbackFor = InvalidCredentialsException.class)
     public LoginResponse login(LoginRequest request) {
+        LoginAttempt attempt = loginAttemptService.begin(request.loginId());
         Optional<User> optionalUser = userRepository.findByUserName(request.loginId());
         if (optionalUser.isEmpty()) {
             passwordEncoder.matches(request.password(), dummyPasswordHash);
+            loginAttemptService.fail(attempt);
             throw new InvalidCredentialsException();
         }
         User user = optionalUser.get();
         if (!passwordEncoder.matches(request.password(), user.getPassword())) {
+            loginAttemptService.fail(attempt);
             throw new InvalidCredentialsException();
         }
+        loginAttemptService.success(attempt);
         Optional<RefreshToken> existingToken = refreshTokenRepository.findByUserIdForUpdate(user.getId());
         String sessionId = UUID.randomUUID().toString();
         String refreshToken = jwtProvider.createRefreshToken(user.getId().toString(),sessionId);
         String tokenHash = hashToken(refreshToken);
-        LocalDateTime expiresAt = LocalDateTime.now().plusDays(14);
+        LocalDateTime expiresAt = jwtProvider.getRefreshTokenExpiration(refreshToken);
         if (existingToken.isEmpty()) {
             RefreshToken newToken = RefreshToken.builder()
                     .userId(user.getId())

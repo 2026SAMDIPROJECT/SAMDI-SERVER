@@ -52,7 +52,7 @@ class UserServiceTest {
     void setUp() {
         userRepository = mock(UserRepository.class);
         passwordEncoder = mock(PasswordEncoder.class);
-        userService = new UserService(userRepository, passwordEncoder, mock(JwtProvider.class),refreshTokenRepository, mock(EmailVerificationService.class));
+        userService = new UserService(userRepository, passwordEncoder, mock(JwtProvider.class),refreshTokenRepository, mock(EmailVerificationService.class), mock(com.example.samdi.domain.user.service.LoginAttemptService.class));
     }
 
     @ParameterizedTest
@@ -126,7 +126,7 @@ class UserServiceTest {
         when(userRepository.findByUserName("missing-player")).thenReturn(Optional.empty());
         BCryptPasswordEncoder realEncoder = spy(new BCryptPasswordEncoder());
         JwtProvider jwtProvider = mock(JwtProvider.class);
-        UserService service = new UserService(userRepository, realEncoder, jwtProvider,refreshTokenRepository, mock(EmailVerificationService.class));
+        UserService service = new UserService(userRepository, realEncoder, jwtProvider,refreshTokenRepository, mock(EmailVerificationService.class), mock(com.example.samdi.domain.user.service.LoginAttemptService.class));
 
         org.springframework.test.util.ReflectionTestUtils.setField(service, "dummyPasswordHash",
                 "$2a$10$G48i72gfQyJ7URWzsalGbeZsaw79R8FDiHbAQBaAoYOLgHqoRBQiG");

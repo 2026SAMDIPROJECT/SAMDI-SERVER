@@ -229,7 +229,14 @@ class JwtAuthenticationIntegrationTest {
         assertEquals(200, loginResponse.statusCode());
         var loginJson = objectMapper.readTree(loginResponse.body());
         assertTrue(loginJson.get("success").asBoolean());
-        String token = loginJson.get("data").get("accessToken").asString();
+        assertFalse(loginJson.has("data"));
+        String token = loginResponse.headers().firstValue("Authorization").orElseThrow().substring(7);
+        String cookie = loginResponse.headers().firstValue("Set-Cookie").orElseThrow();
+        assertTrue(cookie.contains("HttpOnly"));
+        assertTrue(cookie.contains("Secure"));
+        assertTrue(cookie.contains("SameSite=Strict"));
+        assertTrue(cookie.contains("Path=/auth/refresh"));
+        assertTrue(cookie.contains("Max-Age="));
         assertFalse(token.isBlank());
 
         var protectedResponse = client.send(request("/test/auth")
@@ -241,6 +248,17 @@ class JwtAuthenticationIntegrationTest {
         var anonymousResponse = client.send(request("/test/auth").GET().build(),
                 HttpResponse.BodyHandlers.ofString());
         assertErrorResponse(anonymousResponse, ErrorCode.UNAUTHORIZED);
+    }
+
+    @Test
+    void refreshRequiresCsrfHeaderAndCookie() throws Exception {
+        var missingHeader = client.send(request("/auth/refresh")
+                        .POST(HttpRequest.BodyPublishers.noBody()).build(), HttpResponse.BodyHandlers.ofString());
+        assertEquals(403, missingHeader.statusCode());
+        var missingCookie = client.send(request("/auth/refresh")
+                        .header("X-Requested-With", "XMLHttpRequest")
+                        .POST(HttpRequest.BodyPublishers.noBody()).build(), HttpResponse.BodyHandlers.ofString());
+        assertEquals(401, missingCookie.statusCode());
     }
 
     @Test
@@ -259,23 +277,36 @@ class JwtAuthenticationIntegrationTest {
                         .POST(HttpRequest.BodyPublishers.ofString(loginBody)).build(), HttpResponse.BodyHandlers.ofString());
         assertEquals(200, first.statusCode());
         assertEquals(200, second.statusCode());
-        var firstData = objectMapper.readTree(first.body()).get("data");
-        var secondData = objectMapper.readTree(second.body()).get("data");
+        String firstAccess = first.headers().firstValue("Authorization").orElseThrow();
+        String secondAccess = second.headers().firstValue("Authorization").orElseThrow();
+        String secondCookie = second.headers().firstValue("Set-Cookie").orElseThrow().split(";", 2)[0];
         var oldLogout = client.send(request("/auth/logout")
-                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + firstData.get("accessToken").asString())
+                        .header(HttpHeaders.AUTHORIZATION, firstAccess)
                         .POST(HttpRequest.BodyPublishers.noBody()).build(), HttpResponse.BodyHandlers.ofString());
         assertEquals(401, oldLogout.statusCode());
-        String refreshBody = objectMapper.writeValueAsString(Map.of("refreshToken", secondData.get("refreshToken").asString()));
-        var refreshed = client.send(request("/auth/refresh").header(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE)
-                        .POST(HttpRequest.BodyPublishers.ofString(refreshBody)).build(), HttpResponse.BodyHandlers.ofString());
+        var missingCsrfHeader = client.send(request("/auth/refresh").header("Cookie", secondCookie)
+                        .POST(HttpRequest.BodyPublishers.noBody()).build(), HttpResponse.BodyHandlers.ofString());
+        assertEquals(403, missingCsrfHeader.statusCode());
+        var refreshed = client.send(request("/auth/refresh").header("Cookie", secondCookie)
+                        .header("X-Requested-With", "XMLHttpRequest")
+                        .POST(HttpRequest.BodyPublishers.noBody()).build(), HttpResponse.BodyHandlers.ofString());
         assertEquals(200, refreshed.statusCode());
-        String rotatedToken = objectMapper.readTree(refreshed.body()).get("data").get("refreshToken").asString();
+        assertFalse(objectMapper.readTree(refreshed.body()).has("data"));
+        assertTrue(refreshed.headers().firstValue("Authorization").orElseThrow().startsWith("Bearer "));
+        String rotatedCookie = refreshed.headers().firstValue("Set-Cookie").orElseThrow().split(";", 2)[0];
+        assertFalse(secondCookie.equals(rotatedCookie));
+        var reused = client.send(request("/auth/refresh").header("Cookie", secondCookie)
+                        .header("X-Requested-With", "XMLHttpRequest")
+                        .POST(HttpRequest.BodyPublishers.noBody()).build(), HttpResponse.BodyHandlers.ofString());
+        assertEquals(401, reused.statusCode());
         var logout = client.send(request("/auth/logout")
-                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + secondData.get("accessToken").asString())
+                        .header(HttpHeaders.AUTHORIZATION, secondAccess)
                         .POST(HttpRequest.BodyPublishers.noBody()).build(), HttpResponse.BodyHandlers.ofString());
         assertEquals(200, logout.statusCode());
-        var rejected = client.send(request("/auth/refresh").header(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE)
-                        .POST(HttpRequest.BodyPublishers.ofString(objectMapper.writeValueAsString(Map.of("refreshToken", rotatedToken)))).build(),
+        assertTrue(logout.headers().firstValue("Set-Cookie").orElseThrow().contains("Max-Age=0"));
+        var rejected = client.send(request("/auth/refresh").header("Cookie", rotatedCookie)
+                        .header("X-Requested-With", "XMLHttpRequest")
+                        .POST(HttpRequest.BodyPublishers.noBody()).build(),
                 HttpResponse.BodyHandlers.ofString());
         assertEquals(401, rejected.statusCode());
     }
@@ -306,7 +337,7 @@ class JwtAuthenticationIntegrationTest {
 
         assertErrorResponse(response, UserErrorCode.INVALID_CREDENTIALS);
         assertEquals(401, response.statusCode());
-        assertEquals("이메일 또는 비밀번호가 올바르지 않습니다.",
+        assertEquals("아이디 또는 비밀번호가 올바르지 않습니다.",
                 objectMapper.readTree(response.body()).get("message").asString());
     }
 

@@ -161,6 +161,21 @@ class JwtProviderTest {
     }
 
     @ParameterizedTest
+    @CsvSource({"default, , 20160", "default, 25000, 25000", "test, , 20160", "test, 25000, 25000"})
+    void refreshExpirationUsesDefaultAndEnvironmentOverride(String profile, String environmentMinutes, long expectedMinutes) {
+        Map<String, Object> environmentVariables = environmentMinutes == null
+                ? Map.of() : Map.of("JWT_REFRESH_TOKEN_EXPIRATION_MINUTES", environmentMinutes);
+        configurationContext(profile, environmentVariables).run(context -> {
+            assertNull(context.getStartupFailure());
+            assertEquals(expectedMinutes, context.getEnvironment().getProperty("jwt.refresh-token-expiration-minutes", Long.class));
+            String token = context.getBean(JwtProvider.class).createRefreshToken("42", "test-session");
+            var claims = Jwts.parser().verifyWith(signingKey).build().parseSignedClaims(token).getPayload();
+            assertEquals(Duration.ofMinutes(expectedMinutes), Duration.between(
+                    claims.getIssuedAt().toInstant(), claims.getExpiration().toInstant()));
+        });
+    }
+
+    @ParameterizedTest
     @ValueSource(strings = {"1", "42", "9223372036854775807"})
     void getUserIdReturnsValidPositiveUserId(String userId) {
         String token = jwtProvider.createAccessToken(userId, "test-session");

@@ -1,52 +1,15 @@
-# 인증 DB 구조 회의 초안
+# 인증 DB 구조 검토
 
-이 문서는 실행용 마이그레이션이 아니다. 공유 DB의 현재 DDL과 기존 데이터, 팀의 인증 정책을 확인한 뒤 확정해야 한다. SQL을 공유 DB에 실행하지 않았다.
+이 문서는 팀 검토용이며 공유 DB에 실행한 마이그레이션이 아니다. 실제 DB에 연결하지 않고 전달받은 DDL과 현재 엔티티를 비교했다. 운영 적용 전 현재 DB의 테이블과 제약 조건을 확인해야 한다.
 
-이전에 전달받은 users DDL에는 user_id, login_id, password_hash, email, email_verified_at, created_at과 uq_users_login_id, uq_users_email이 있다. 현재 Entity는 id, user_name, password, updated_at을 사용하므로 그대로는 일치하지 않는다. 현재 실제 DDL은 확인하지 못했다.
+전달받은 `users` DDL은 `user_id`, `login_id`, `password_hash`, `email`, `email_verified_at`, `created_at`과 `uq_users_login_id`, `uq_users_email`을 포함한다. 현재 `User` 엔티티는 `id`를 `user_id`에, `userName`을 `login_id`에, `password`를 `password_hash`에 매핑한다. `email_verified_at`은 엔티티에서 사용하지 않는다. 기존 `users` 테이블은 생성하거나 변경하지 않는다.
 
-회의에서 결정할 사항:
-- login_id와 별도 nickname을 모두 저장할지, 기존 user_name을 어느 필드에 대응할지
-- 기존 사용자의 이메일 인증 여부와 인증 전 계정의 로그인 정책
-- refresh_tokens 실제 존재 여부, 동시 기기 로그인 허용 및 회전 정책
-- 이메일 인증 상태의 저장·만료·경합 처리, 기존 데이터 보존 및 전환 방법
+신규 테이블은 현재 존재 여부를 확인한 후 다음 DDL을 검토한다.
 
-아래는 새 설치를 가정한 논의용 예시다. users도 새 데이터베이스라면 필요하다. 기존 공유 DB에는 users가 이미 있다고 전달받았으므로 그 DB에서 CREATE TABLE을 실행하지 않는다. 아래 users는 현재 Entity 기준이며 loginId와 nickname 분리 및 인증 상태 저장은 팀과 협의 후 확정해야 한다. 기존 테이블을 변경하는 SQL이 아니며, 타입과 이름은 확정되지 않았다.
+- `docs/sql/auth-tables-final.sql`: `email_verifications`, `refresh_tokens` 생성 초안.
+- `docs/sql/login-attempts.sql`: 인덱스를 포함한 `login_attempts` 생성 초안.
+- `docs/sql/login-attempts-cleanup-index.sql`: `login_attempts`가 이미 있고 해당 인덱스가 없는 경우에만 적용할 인덱스 초안. 위 생성 DDL과 중복 적용하지 않는다.
 
-```sql
-CREATE TABLE users (
-    id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
-    email VARCHAR(254) NOT NULL,
-    password VARCHAR(255) NOT NULL,
-    user_name VARCHAR(50) NOT NULL,
-    created_at DATETIME(6) NOT NULL,
-    updated_at DATETIME(6) NOT NULL,
-    CONSTRAINT email UNIQUE (email),
-    CONSTRAINT user_id UNIQUE (user_name)
-);
+`email-verification-draft.sql`과 `email-verification-send.sql`은 이전 초안이므로 최종 DDL과 함께 적용하지 않는다. `ddl-auto: validate`는 스키마를 자동 변경하지 않으며, 모든 UNIQUE 제약 조건이나 인덱스가 의도대로 존재하는지 대신 확인해 주지는 않는다.
 
-CREATE TABLE email_verifications (
-    email VARCHAR(254) NOT NULL PRIMARY KEY,
-    code_hash CHAR(64) NOT NULL,
-    expires_at DATETIME(6) NOT NULL,
-    attempts INT NOT NULL DEFAULT 0,
-    last_sent_at DATETIME(6) NOT NULL,
-    verified_at DATETIME(6) NULL
-);
-
-CREATE TABLE refresh_tokens (
-    id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
-    user_id BIGINT UNSIGNED NOT NULL,
-    token_hash CHAR(64) NOT NULL,
-    session_id VARCHAR(36) NOT NULL,
-    expires_at DATETIME(6) NOT NULL,
-    UNIQUE KEY uq_refresh_tokens_user_id (user_id)
-);
-```
-
-이 초안은 인증코드 발송 제한의 기간별 횟수, 동시 요청 잠금, 인증 증명 소진, 토큰 회전의 원자성, 외래키 및 만료 데이터 정리를 완결하지 않는다. 구현과 운영 정책을 검증한 후 수정해야 한다.
-
-## 현재 엔티티 기준 검토 파일
-
-신규 테이블의 현재 엔티티 기준 DDL은 `docs/sql/auth-tables-final.sql`이다. 기존 `email-verification-draft.sql`과 `email-verification-send.sql`은 이전 초안이므로 함께 적용하지 않는다. 이 파일도 팀 검토 전에는 공유 DB에 실행하지 않는다. `users`는 생성하거나 변경하지 않는다.
-
-기존에 전달된 `users.user_id`는 BIGINT UNSIGNED이지만 Java `Long`과 RefreshToken 엔티티의 `user_id`는 부호 있는 BIGINT 범위다. 외래키는 실제 DB의 타입·기존 데이터 검토 전까지 초안에 추가하지 않았다. 이메일 인증 테이블과 Refresh Token 테이블의 기존 존재 여부, 문자 집합, 인증서 및 접근 권한을 실제 연결 전에 확인해야 한다.
+전달받은 `users.user_id`는 BIGINT UNSIGNED이지만 Java `Long`과 Refresh Token의 `user_id`는 부호 있는 BIGINT 범위다. 외래키는 실제 DB의 타입과 기존 데이터 검토 전까지 추가하지 않았다. DB와 애플리케이션의 시간대, TLS 인증서, 기존 사용자에 대한 이메일 인증 정책도 배포 전에 확인해야 한다.
