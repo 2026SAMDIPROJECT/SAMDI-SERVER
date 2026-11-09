@@ -35,8 +35,6 @@ public class EmailVerification {
         this.lastSentAt = now;
         this.codeExpiresAt = now.plusMinutes(5);
         this.attempts = 0;
-        this.proofHash = null;
-        this.proofExpiresAt = null;
     }
 
     public String getCodeHash() { return codeHash; }

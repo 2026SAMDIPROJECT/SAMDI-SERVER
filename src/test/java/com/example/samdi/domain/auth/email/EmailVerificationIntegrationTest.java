@@ -56,6 +56,32 @@ class EmailVerificationIntegrationTest {
     }
 
     @Test
+    void resendKeepsExistingProofUsableForSignup() {
+        String email = java.util.UUID.randomUUID() + "@example.com";
+        String proof = verifiedProof(email);
+        jdbc.update("UPDATE email_verifications SET last_sent_at = ? WHERE email = ?", LocalDateTime.now().minusMinutes(2), email);
+        service.send(email);
+
+        assertEquals(email, userService.signup(signup(email, java.util.UUID.randomUUID().toString(), proof)).email());
+    }
+
+    @Test
+    void successfulVerificationAfterResendReplacesExistingProof() {
+        String email = java.util.UUID.randomUUID() + "@example.com";
+        String oldProof = verifiedProof(email);
+        jdbc.update("UPDATE email_verifications SET last_sent_at = ? WHERE email = ?", LocalDateTime.now().minusMinutes(2), email);
+        service.send(email);
+        var codes = org.mockito.ArgumentCaptor.forClass(String.class);
+        verify(sender, times(2)).send(eq(email), codes.capture());
+        String newProof = service.verify(email, codes.getAllValues().get(1));
+
+        assertNotEquals(oldProof, newProof);
+        String loginId = java.util.UUID.randomUUID().toString();
+        assertThrows(EmailSendException.class, () -> userService.signup(signup(email, loginId, oldProof)));
+        assertEquals(email, userService.signup(signup(email, loginId, newProof)).email());
+    }
+
+    @Test
     void verificationIssuesProofAndRejectsReuse() {
         var code = org.mockito.ArgumentCaptor.forClass(String.class);
         service.send("user@example.com");
