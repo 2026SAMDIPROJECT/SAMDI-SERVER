@@ -119,7 +119,21 @@ class EmailVerificationIntegrationTest {
     }
 
     private com.example.samdi.domain.user.dto.request.SignupRequest signup(String email, String loginId, String proof) {
-        return new com.example.samdi.domain.user.dto.request.SignupRequest(email, "Test1234!", "Test1234!", loginId, proof);
+        return new com.example.samdi.domain.user.dto.request.SignupRequest(email, "Test1234!", "Test1234!", loginId, proof, "nick-" + java.util.UUID.randomUUID());
+    }
+
+    @Test
+    void duplicateNicknameKeepsProofForRetry() {
+        String first = java.util.UUID.randomUUID().toString();
+        String second = java.util.UUID.randomUUID().toString();
+        String nickname = java.util.UUID.randomUUID().toString();
+        String firstEmail = first + "@example.com";
+        String secondEmail = second + "@example.com";
+        userService.signup(new com.example.samdi.domain.user.dto.request.SignupRequest(firstEmail, "Test1234!", "Test1234!", first, verifiedProof(firstEmail), nickname));
+        String proof = verifiedProof(secondEmail);
+        assertThrows(com.example.samdi.domain.user.exception.DuplicateNicknameException.class,
+                () -> userService.signup(new com.example.samdi.domain.user.dto.request.SignupRequest(secondEmail, "Test1234!", "Test1234!", second, proof, nickname)));
+        assertNotNull(userService.signup(new com.example.samdi.domain.user.dto.request.SignupRequest(secondEmail, "Test1234!", "Test1234!", second, proof, second)));
     }
 
     @Test

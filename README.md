@@ -22,11 +22,13 @@ DB 연결은 `sslMode=verify-full`로 인증서와 호스트명을 검증합니�
 
 1. `POST /auth/email/send`: `{"email":"user@example.com"}`으로 인증번호를 요청합니다.
 2. `POST /auth/email/verify`: `{"email":"user@example.com","code":"123456"}`을 보내고 응답의 `data.verificationToken`을 받습니다.
-3. `POST /auth/signup`: `loginId`, `email`, `password`, `passwordConfirm`, `verificationToken`을 JSON으로 보냅니다. 성공 응답은 `data.email`과 `data.userName`을 포함합니다.
+3. `POST /auth/signup`: `loginId`, `email`, `password`, `passwordConfirm`, `verificationToken`, `nickname`을 JSON으로 보냅니다. 닉네임은 필수이며 중복할 수 없습니다. 성공 응답은 `data.email`과 `data.userName`을 포함합니다.
 
 `POST /auth/login`은 `{"loginId":"player01","password":"..."}`을 받습니다. 성공하면 Access Token을 `Authorization: Bearer <token>` 응답 헤더로, Refresh Token을 `__Secure-refreshToken` 쿠키로 반환합니다. 토큰은 응답 JSON에 포함되지 않습니다.
 
 인증이 필요한 요청에는 `Authorization: Bearer <accessToken>` 헤더를 사용합니다. `POST /auth/refresh`에는 Refresh Token 쿠키와 `X-Requested-With: XMLHttpRequest` 헤더를 보내며 본문은 필요하지 않습니다. 재발급 응답의 Access Token 헤더와 Refresh Token 쿠키를 사용하고 이전 Refresh Token은 폐기해야 합니다. `POST /auth/logout`에는 Access Token 헤더가 필요하며, 성공 시 Refresh Token과 쿠키가 삭제됩니다. Access Token은 로그아웃 후에도 만료 전까지 유효합니다.
+
+`PATCH /auth/me/nickname`은 Access Token 헤더와 `{"nickname":"새 닉네임"}`을 받습니다. 본인의 닉네임만 변경할 수 있으며 빈 값과 50자를 넘는 값은 400, 다른 사용자의 닉네임은 409로 거부합니다.
 
 쿠키는 `Secure`, `HttpOnly`, `SameSite=Strict`, `Path=/auth/refresh` 속성을 사용합니다. Unity에서는 HTTPS 연결과 쿠키의 저장·재전송을 지원하는 HTTP 클라이언트가 필요합니다. 브라우저의 교차 출처 호출은 별도 CORS 정책이 필요하며, 쿠키 인증과 재발급 요청 헤더를 고려해 허용 출처를 제한해야 합니다.
 

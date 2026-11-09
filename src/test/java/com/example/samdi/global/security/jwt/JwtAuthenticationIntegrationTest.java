@@ -207,7 +207,7 @@ class JwtAuthenticationIntegrationTest {
         String email = "jwt-" + UUID.randomUUID() + "@example.com";
         String signupBody = objectMapper.writeValueAsString(Map.of(
                 "email", email, "password", "Test1234!",
-                "passwordConfirm", "Test1234!", "loginId", "jwt-tester", "verificationToken", "A".repeat(43)
+                "passwordConfirm", "Test1234!", "loginId", "jwt-tester", "verificationToken", "A".repeat(43), "nickname", "nick-" + UUID.randomUUID()
         ));
         var signupResponse = client.send(request("/auth/signup")
                         .header(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE)
@@ -266,7 +266,7 @@ class JwtAuthenticationIntegrationTest {
         String loginId = "session-" + UUID.randomUUID();
         String signupBody = objectMapper.writeValueAsString(Map.of(
                 "email", loginId + "@example.com", "loginId", loginId,
-                "password", "Test1234!", "passwordConfirm", "Test1234!", "verificationToken", "A".repeat(43)));
+                "password", "Test1234!", "passwordConfirm", "Test1234!", "verificationToken", "A".repeat(43), "nickname", "nick-" + UUID.randomUUID()));
         var signup = client.send(request("/auth/signup").header(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE)
                         .POST(HttpRequest.BodyPublishers.ofString(signupBody)).build(), HttpResponse.BodyHandlers.ofString());
         assertEquals(201, signup.statusCode());
@@ -318,7 +318,7 @@ class JwtAuthenticationIntegrationTest {
         if (registered) {
             String signupBody = objectMapper.writeValueAsString(Map.of(
                     "email", email, "password", "Correct1234!",
-                    "passwordConfirm", "Correct1234!", "loginId", "login-tester", "verificationToken", "A".repeat(43)
+                    "passwordConfirm", "Correct1234!", "loginId", "login-tester", "verificationToken", "A".repeat(43), "nickname", "nick-" + UUID.randomUUID()
             ));
             var signupResponse = client.send(request("/auth/signup")
                             .header(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE)

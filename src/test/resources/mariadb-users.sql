@@ -1,11 +1,13 @@
 CREATE TABLE `users` (
-  `user_id` bigint(20) unsigned NOT NULL AUTO_INCREMENT,
-  `login_id` varchar(50) NOT NULL,
-  `password_hash` varchar(255) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  `id` bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+  `nickname` varchar(50) NOT NULL,
+  `login_id` varchar(50) DEFAULT NULL,
   `email` varchar(254) NOT NULL,
-  `email_verified_at` datetime(6) DEFAULT NULL,
+  `password` varchar(255) NOT NULL,
   `created_at` datetime(6) NOT NULL DEFAULT current_timestamp(6),
-  PRIMARY KEY (`user_id`),
+  `updated_at` datetime(6) NOT NULL DEFAULT current_timestamp(6) ON UPDATE current_timestamp(6),
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `user_id` (`nickname`),
   UNIQUE KEY `uq_users_login_id` (`login_id`),
-  UNIQUE KEY `uq_users_email` (`email`)
+  UNIQUE KEY `email` (`email`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

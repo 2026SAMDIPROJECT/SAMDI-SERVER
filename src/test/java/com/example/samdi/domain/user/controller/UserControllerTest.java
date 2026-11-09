@@ -224,7 +224,8 @@ class UserControllerTest {
                   "password": "Test1234!",
                   "passwordConfirm": "%s",
                   "loginId": "tester",
-                  "verificationToken": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+                  "verificationToken": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+                  "nickname": "player"
                 }
                 """.formatted("a".repeat(21));
 
@@ -340,7 +341,8 @@ class UserControllerTest {
                   "password": "%s",
                   "passwordConfirm": "%s",
                   "loginId": "tester",
-                  "verificationToken": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+                  "verificationToken": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+                  "nickname": "player"
                 }
                 """.formatted(email, password, password);
     }

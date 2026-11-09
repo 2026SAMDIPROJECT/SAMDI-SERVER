@@ -63,7 +63,7 @@ class MariaDbUserIntegrationTest {
     void signupAndEmailLoginUseExistingSchema() {
         String loginId = UUID.randomUUID().toString();
         String email = loginId + "@example.com";
-        var response = userService.signup(new SignupRequest(email, "Test1234!", "Test1234!", loginId, "A".repeat(43)));
+        var response = userService.signup(new SignupRequest(email, "Test1234!", "Test1234!", loginId, "A".repeat(43), "nick-" + java.util.UUID.randomUUID()));
         User user = userRepository.findByEmail(email).orElseThrow();
 
         assertEquals(loginId, user.getUserName());
@@ -72,41 +72,40 @@ class MariaDbUserIntegrationTest {
         assertNotNull(user.getCreatedAt());
         assertEquals(user.getId().toString(), jwtProvider.getUserId(
                 userService.login(new LoginRequest(loginId, "Test1234!")).accessToken()));
-        assertNull(jdbcTemplate.queryForObject("SELECT email_verified_at FROM users WHERE user_id = ?",
-                Object.class, user.getId()));
+        assertNotNull(user.getNickname());
     }
 
     @Test
     void databaseUniqueConstraintsAreConvertedAfterPrecheckRace() {
         String loginId = UUID.randomUUID().toString();
         String email = loginId + "@example.com";
-        userService.signup(new SignupRequest(email, "Test1234!", "Test1234!", loginId, "A".repeat(43)));
+        userService.signup(new SignupRequest(email, "Test1234!", "Test1234!", loginId, "A".repeat(43), "nick-" + java.util.UUID.randomUUID()));
         UserRepository repository = mock(UserRepository.class, delegatesTo(userRepository));
         doReturn(false).when(repository).existsByEmail(anyString());
         doReturn(java.util.Optional.empty()).when(repository).findByUserName(anyString());
         UserService service = new UserService(repository, passwordEncoder, jwtProvider,refreshTokenRepository, mock(EmailVerificationService.class), mock(com.example.samdi.domain.user.service.LoginAttemptService.class));
 
         assertThrows(DuplicateEmailException.class, () -> service.signup(
-                new SignupRequest(email, "Test1234!", "Test1234!", UUID.randomUUID().toString(), "A".repeat(43))));
+                new SignupRequest(email, "Test1234!", "Test1234!", UUID.randomUUID().toString(), "A".repeat(43), "nick-" + java.util.UUID.randomUUID())));
         assertThrows(DuplicateLoginIdException.class, () -> service.signup(
-                new SignupRequest(UUID.randomUUID() + "@example.com", "Test1234!", "Test1234!", loginId, "A".repeat(43))));
+                new SignupRequest(UUID.randomUUID() + "@example.com", "Test1234!", "Test1234!", loginId, "A".repeat(43), "nick-" + java.util.UUID.randomUUID())));
     }
 
     @Test
     void uniqueChecksFollowDatabaseCaseInsensitiveCollation() {
         String loginId = "player-" + UUID.randomUUID();
         String email = UUID.randomUUID() + "@example.com";
-        userService.signup(new SignupRequest(email, "Test1234!", "Test1234!", loginId, "A".repeat(43)));
+        userService.signup(new SignupRequest(email, "Test1234!", "Test1234!", loginId, "A".repeat(43), "nick-" + java.util.UUID.randomUUID()));
 
         assertThrows(DuplicateLoginIdException.class, () -> userService.signup(new SignupRequest(
-                UUID.randomUUID() + "@example.com", "Test1234!", "Test1234!", loginId.toUpperCase(), "A".repeat(43))));
+                UUID.randomUUID() + "@example.com", "Test1234!", "Test1234!", loginId.toUpperCase(), "A".repeat(43), "nick-" + java.util.UUID.randomUUID())));
     }
 
     @Test
     void databaseDefaultCreatedAtAppliesWhenColumnIsOmitted() {
         String loginId = UUID.randomUUID().toString();
-        jdbcTemplate.update("INSERT INTO users (login_id, email, password_hash) VALUES (?, ?, ?)",
-                loginId, loginId + "@example.com", passwordEncoder.encode("Test1234!"));
+        jdbcTemplate.update("INSERT INTO users (login_id, email, password, nickname) VALUES (?, ?, ?, ?)",
+                loginId, loginId + "@example.com", passwordEncoder.encode("Test1234!"), loginId);
 
         assertNotNull(userRepository.findByEmail(loginId + "@example.com").orElseThrow().getCreatedAt());
     }

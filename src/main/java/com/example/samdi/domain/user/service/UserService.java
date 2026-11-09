@@ -13,6 +13,8 @@ import com.example.samdi.domain.user.exception.DuplicateEmailException;
 import com.example.samdi.domain.user.exception.DuplicateLoginIdException;
 import com.example.samdi.domain.user.exception.InvalidCredentialsException;
 import com.example.samdi.domain.user.exception.PasswordMismatchException;
+import com.example.samdi.domain.user.exception.DuplicateNicknameException;
+import com.example.samdi.domain.user.exception.UserNotFoundException;
 import com.example.samdi.domain.user.repository.UserRepository;
 import com.example.samdi.global.security.jwt.JwtProvider;
 import jakarta.validation.Valid;
@@ -46,8 +48,9 @@ public class UserService {
     private final LoginAttemptService loginAttemptService;
     @Value("${samdi.security.dummy-password-hash}")
     private String dummyPasswordHash;
-    private static final String EMAIL_UNIQUE_CONSTRAINT = "uq_users_email";
+    private static final String EMAIL_UNIQUE_CONSTRAINT = "email";
     private static final String USER_NAME_UNIQUE_CONSTRAINT = "uq_users_login_id";
+    private static final String NICKNAME_UNIQUE_CONSTRAINT = "user_id";
 
     public SignupResponse signup(SignupRequest request) {
         String email = request.email().trim().toLowerCase(Locale.ROOT);
@@ -60,12 +63,16 @@ public class UserService {
         if (userRepository.findByUserName(request.loginId()).isPresent()) {
             throw new DuplicateLoginIdException();
         }
+        if (userRepository.existsByNickname(request.nickname())) {
+            throw new DuplicateNicknameException();
+        }
         emailVerificationService.consumeProof(email, request.verificationToken());
         try {
             User user = User
                     .builder()
                     .email(email)
                     .userName(request.loginId())
+                    .nickname(request.nickname())
                     .password(passwordEncoder.encode(request.password()))
                     .build();
             User savedUser = userRepository.saveAndFlush(user);
@@ -76,6 +83,22 @@ public class UserService {
             }
             if (isDuplicateViolation(e, USER_NAME_UNIQUE_CONSTRAINT)) {
                 throw new DuplicateLoginIdException();
+            }
+            if (isDuplicateViolation(e, NICKNAME_UNIQUE_CONSTRAINT)) {
+                throw new DuplicateNicknameException();
+            }
+            throw e;
+        }
+    }
+
+    public void changeNickname(Long userId, String nickname) {
+        User user = userRepository.findById(userId).orElseThrow(UserNotFoundException::new);
+        user.changeNickname(nickname);
+        try {
+            userRepository.saveAndFlush(user);
+        } catch (DataIntegrityViolationException e) {
+            if (isDuplicateViolation(e, NICKNAME_UNIQUE_CONSTRAINT)) {
+                throw new DuplicateNicknameException();
             }
             throw e;
         }

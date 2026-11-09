@@ -83,7 +83,7 @@ class UserServiceTest {
     @Test
     void signUpNormalizesUppercaseEmailBeforeSaving() {
         signUpSuccessfully(new SignupRequest(
-                "USER@EXAMPLE.COM", "Test1234!", "Test1234!", "tester", "A".repeat(43)
+                "USER@EXAMPLE.COM", "Test1234!", "Test1234!", "tester", "A".repeat(43), "nick-" + java.util.UUID.randomUUID()
         ));
 
         assertSavedEmail("user@example.com");
@@ -92,7 +92,7 @@ class UserServiceTest {
     @Test
     void signUpTrimsEmailBeforeSaving() {
         signUpSuccessfully(new SignupRequest(
-                "  user@example.com  ", "Test1234!", "Test1234!", "tester", "A".repeat(43)
+                "  user@example.com  ", "Test1234!", "Test1234!", "tester", "A".repeat(43), "nick-" + java.util.UUID.randomUUID()
         ));
 
         assertSavedEmail("user@example.com");
@@ -103,7 +103,7 @@ class UserServiceTest {
         when(userRepository.existsByEmail("user@example.com")).thenReturn(true);
 
         assertThrows(DuplicateEmailException.class, () -> userService.signup(new SignupRequest(
-                "USER@EXAMPLE.COM", "Test1234!", "Test1234!", "tester", "A".repeat(43)
+                "USER@EXAMPLE.COM", "Test1234!", "Test1234!", "tester", "A".repeat(43), "nick-" + java.util.UUID.randomUUID()
         )));
 
         verify(userRepository).existsByEmail("user@example.com");
@@ -114,7 +114,7 @@ class UserServiceTest {
     @Test
     void signUpChecksPasswordMismatchBeforeEmailLookup() {
         assertThrows(PasswordMismatchException.class, () -> userService.signup(new SignupRequest(
-                "user@example.com", "Test1234!", "Different1234!", "tester", "A".repeat(43)
+                "user@example.com", "Test1234!", "Different1234!", "tester", "A".repeat(43), "nick-" + java.util.UUID.randomUUID()
         )));
 
         verifyNoInteractions(userRepository, passwordEncoder);
@@ -164,7 +164,7 @@ class UserServiceTest {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"uk_users_email", "email", "uq_users_login_id_other", "other.uq_users_login_id"})
+    @ValueSource(strings = {"uk_users_email", "other_email", "uq_users_login_id_other", "other.uq_users_login_id"})
     void signUpDoesNotTreatOtherConstraintsAsDuplicates(String constraintName) {
         DataIntegrityViolationException exception = constraintViolation(constraintName);
         when(userRepository.saveAndFlush(any(User.class))).thenThrow(exception);
@@ -190,20 +190,20 @@ class UserServiceTest {
     }
 
     private SignupRequest signupRequest() {
-        return new SignupRequest("signup@example.com", "Test1234!", "Test1234!", "tester", "A".repeat(43));
+        return new SignupRequest("signup@example.com", "Test1234!", "Test1234!", "tester", "A".repeat(43), "nick-" + java.util.UUID.randomUUID());
     }
 
     private static Stream<String> emailConstraintNames() {
         return Stream.of(
-                "uq_users_email",
-                "users." + "uq_users_email",
-                "uq_users_email",
-                "users." + "uq_users_email",
-                "babi.users." + "uq_users_email",
-                "PUBLIC." + "uq_users_email".toUpperCase(Locale.ROOT)
-                        + " INDEX PUBLIC." + "uq_users_email".toUpperCase(Locale.ROOT) + "_INDEX_6",
-                "PUBLIC." + "uq_users_email".toUpperCase(Locale.ROOT)
-                        + " INDEX PUBLIC." + "uq_users_email".toUpperCase(Locale.ROOT) + "_INDEX_6"
+                "email",
+                "users." + "email",
+                "email",
+                "users." + "email",
+                "babi.users." + "email",
+                "PUBLIC." + "email".toUpperCase(Locale.ROOT)
+                        + " INDEX PUBLIC." + "email".toUpperCase(Locale.ROOT) + "_INDEX_6",
+                "PUBLIC." + "email".toUpperCase(Locale.ROOT)
+                        + " INDEX PUBLIC." + "email".toUpperCase(Locale.ROOT) + "_INDEX_6"
         );
     }
 
@@ -213,11 +213,11 @@ class UserServiceTest {
                 null,
                 "backup_email",
                 "email_archive",
-                "orders." + "uq_users_email",
-                "babi.orders." + "uq_users_email",
-                "public.other_constraint INDEX public." + "uq_users_email" + "_INDEX_6",
-                "users." + "uq_users_email" + "_other",
-                "public." + "uq_users_email" + "_other INDEX public.some_index"
+                "orders." + "email",
+                "babi.orders." + "email",
+                "public.other_constraint INDEX public." + "email" + "_INDEX_6",
+                "users." + "email" + "_other",
+                "public." + "email" + "_other INDEX public.some_index"
         );
     }
 

@@ -32,8 +32,8 @@ class LoginAttemptIntegrationTest {
 
     private String createUser() {
         String loginId = UUID.randomUUID().toString();
-        jdbc.update("INSERT INTO users (login_id, email, password_hash, created_at) VALUES (?, ?, ?, ?)",
-                loginId, loginId + "@example.invalid", passwordEncoder.encode("Test1234!"), LocalDateTime.now());
+        jdbc.update("INSERT INTO users (login_id, email, password, created_at, nickname) VALUES (?, ?, ?, ?, ?)",
+                loginId, loginId + "@example.invalid", passwordEncoder.encode("Test1234!"), LocalDateTime.now(), loginId);
         return loginId;
     }
 

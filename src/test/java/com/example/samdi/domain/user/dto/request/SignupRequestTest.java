@@ -34,7 +34,7 @@ class SignupRequestTest {
                 "test@example.com",
                 password,
                 password,
-                "tester", "A".repeat(43)
+                "tester", "A".repeat(43), "nick-" + java.util.UUID.randomUUID()
         );
 
         try (var factory = Validation.buildDefaultValidatorFactory()) {

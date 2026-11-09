@@ -2,6 +2,7 @@ package com.example.samdi.domain.user.controller;
 
 import com.example.samdi.domain.user.dto.request.LoginRequest;
 import com.example.samdi.domain.user.dto.request.SignupRequest;
+import com.example.samdi.domain.user.dto.request.NicknameRequest;
 import com.example.samdi.domain.user.dto.response.LoginResponse;
 import com.example.samdi.domain.user.dto.response.SignupResponse;
 import com.example.samdi.domain.user.service.UserService;
@@ -12,6 +13,7 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.ResponseStatus;
@@ -33,6 +35,13 @@ public class UserController {
     private final UserService userService;
     @Value("${jwt.refresh-token-expiration-minutes}")
     private long refreshTokenExpirationMinutes = 20160;
+
+    @PatchMapping("/me/nickname")
+    public ApiResponse<Void> changeNickname(@RequestAttribute("userId") String userId,
+                                            @Valid @RequestBody NicknameRequest request) {
+        userService.changeNickname(Long.valueOf(userId), request.nickname());
+        return ApiResponse.success("닉네임이 변경되었습니다.", null);
+    }
 
     @PostMapping("/signup")
     @ResponseStatus(HttpStatus.CREATED)

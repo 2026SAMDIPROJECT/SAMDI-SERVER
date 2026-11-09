@@ -28,7 +28,7 @@ class MariaDbEmailConcurrencyTest extends EmailVerificationIntegrationTest {
         service.send(email);
         org.mockito.Mockito.verify(sender).send(org.mockito.ArgumentMatchers.eq(email), code.capture());
         String proof = service.verify(email, code.getValue());
-        users.signup(new com.example.samdi.domain.user.dto.request.SignupRequest(email, "Test1234!", "Test1234!", id, proof));
+        users.signup(new com.example.samdi.domain.user.dto.request.SignupRequest(email, "Test1234!", "Test1234!", id, proof, "nick-" + java.util.UUID.randomUUID()));
         return users.login(new com.example.samdi.domain.user.dto.request.LoginRequest(id, "Test1234!"));
     }
 
@@ -187,8 +187,8 @@ class MariaDbEmailConcurrencyTest extends EmailVerificationIntegrationTest {
         String secondProof = service.verify(secondEmail, secondCode.getValue());
         CountDownLatch start = new CountDownLatch(1);
         try (var executor = Executors.newFixedThreadPool(2)) {
-            var first = executor.submit(() -> { start.await(); try { users.signup(new com.example.samdi.domain.user.dto.request.SignupRequest(firstEmail, "Test1234!", "Test1234!", loginId, firstProof)); return "OK"; } catch (com.example.samdi.domain.user.exception.DuplicateLoginIdException e) { return "DUPLICATE"; } });
-            var second = executor.submit(() -> { start.await(); try { users.signup(new com.example.samdi.domain.user.dto.request.SignupRequest(secondEmail, "Test1234!", "Test1234!", loginId, secondProof)); return "OK"; } catch (com.example.samdi.domain.user.exception.DuplicateLoginIdException e) { return "DUPLICATE"; } });
+            var first = executor.submit(() -> { start.await(); try { users.signup(new com.example.samdi.domain.user.dto.request.SignupRequest(firstEmail, "Test1234!", "Test1234!", loginId, firstProof, "nick-" + java.util.UUID.randomUUID())); return "OK"; } catch (com.example.samdi.domain.user.exception.DuplicateLoginIdException e) { return "DUPLICATE"; } });
+            var second = executor.submit(() -> { start.await(); try { users.signup(new com.example.samdi.domain.user.dto.request.SignupRequest(secondEmail, "Test1234!", "Test1234!", loginId, secondProof, "nick-" + java.util.UUID.randomUUID())); return "OK"; } catch (com.example.samdi.domain.user.exception.DuplicateLoginIdException e) { return "DUPLICATE"; } });
             start.countDown();
             assertEquals(java.util.Set.of("OK", "DUPLICATE"), java.util.Set.of(first.get(15, TimeUnit.SECONDS), second.get(15, TimeUnit.SECONDS)));
         }

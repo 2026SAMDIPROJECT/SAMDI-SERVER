@@ -55,6 +55,17 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
         );
     }
 
+    @ExceptionHandler(DuplicateNicknameException.class)
+    public ResponseEntity<ApiResponse<Void>> handleDuplicateNickname(DuplicateNicknameException e) {
+        return createErrorResponse(UserErrorCode.DUPLICATE_NICKNAME,
+                List.of(new ErrorDetail("nickname", UserErrorCode.DUPLICATE_NICKNAME.getMessage())));
+    }
+
+    @ExceptionHandler(UserNotFoundException.class)
+    public ResponseEntity<ApiResponse<Void>> handleUserNotFound(UserNotFoundException e) {
+        return createErrorResponse(UserErrorCode.USER_NOT_FOUND, List.of());
+    }
+
     @ExceptionHandler(PasswordMismatchException.class)
     public ResponseEntity<ApiResponse<Void>> handlePasswordMismatch(
             PasswordMismatchException e
