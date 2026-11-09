@@ -10,20 +10,25 @@ import org.springframework.stereotype.Service;
 public class ScoreService {
 
     private final ScoreRepository scoreRepository;
+
     public ScoreService(ScoreRepository scoreRepository) {
         this.scoreRepository = scoreRepository;
     }
 
     @Transactional
-    public void updateHighestScore(Long userId, int score) {
-        if (score < 0) {
-            throw new IllegalArgumentException("점수는 0점 이사이어야 합니다.");
+    public void updateHighestScore(Long userId, int game1Score, int game2Score) {
+        if (game1Score < 0 || game2Score < 0) {
+            throw new IllegalArgumentException("점수는 0점 이상이어야 합니다.");
         }
 
-        Score userScore = scoreRepository.findById(userId)
-                .orElseThrow(() ->
-                        new EntityNotFoundException("사용자를 찾을 수 없습니다.")
-                );
-        userScore.updateHighestScore(score);
+        // 첫 제출에는 점수 행이 없으므로 사용자 행을 잠근다.
+        String nickname = scoreRepository.findNicknameForUpdate(userId)
+                .orElseThrow(() -> new EntityNotFoundException("사용자를 찾을 수 없습니다."));
+
+        Score score = scoreRepository.findById(userId)
+                .orElseGet(() -> new Score(userId, nickname));
+
+        score.updateHighestScore(nickname, game1Score, game2Score);
+        scoreRepository.save(score);
     }
 }

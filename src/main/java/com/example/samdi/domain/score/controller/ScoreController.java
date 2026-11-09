@@ -37,16 +37,18 @@ public class ScoreController {
         } catch (NumberFormatException e) {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
         }
-
         if (userId <= 0) {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
         }
-        if (request.score() == null || request.score() < 0) {
+
+        Integer game1Score = request.game1Score();
+        Integer game2Score = request.game2Score();
+        if (game1Score == null || game2Score == null || game1Score < 0 || game2Score < 0) {
             return ResponseEntity.badRequest().build();
         }
 
         try {
-            scoreService.updateHighestScore(userId, request.score());
+            scoreService.updateHighestScore(userId, game1Score, game2Score);
         } catch (EntityNotFoundException e) {
             return ResponseEntity.notFound().build();
         }

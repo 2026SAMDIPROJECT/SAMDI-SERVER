@@ -41,12 +41,12 @@ class ScoreControllerTest {
                         .with(csrf())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
-                                {"score": 100}
+                                {"game1Score": 80, "game2Score": 100}
                                 """))
                 .andExpect(status().isNoContent())
                 .andExpect(content().string(""));
 
-        verify(scoreService).updateHighestScore(1L, 100);
+        verify(scoreService).updateHighestScore(1L, 80, 100);
     }
 
     @Test
@@ -56,7 +56,7 @@ class ScoreControllerTest {
                         .with(csrf())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
-                                {"score": -1}
+                                {"game1Score": -1, "game2Score": 100}
                                 """))
                 .andExpect(status().isBadRequest());
 
@@ -69,7 +69,7 @@ class ScoreControllerTest {
                         .with(loginAs("1"))
                         .with(csrf())
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{}"))
+                        .content("{\"game1Score\": 80}"))
                 .andExpect(status().isBadRequest());
 
         verifyNoInteractions(scoreService);
@@ -78,18 +78,18 @@ class ScoreControllerTest {
     @Test
     void returns404ForUnknownUser() throws Exception {
         doThrow(new EntityNotFoundException("사용자를 찾을 수 없습니다."))
-                .when(scoreService).updateHighestScore(1L, 100);
+                .when(scoreService).updateHighestScore(1L, 80, 100);
 
         mockMvc.perform(post("/scores")
                         .with(loginAs("1"))
                         .with(csrf())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
-                                {"score": 100}
+                                {"game1Score": 80, "game2Score": 100}
                                 """))
                 .andExpect(status().isNotFound());
 
-        verify(scoreService).updateHighestScore(1L, 100);
+        verify(scoreService).updateHighestScore(1L, 80, 100);
     }
 
     @Test
@@ -99,7 +99,7 @@ class ScoreControllerTest {
                         .with(csrf())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
-                                {"score": 100}
+                                {"game1Score": 80, "game2Score": 100}
                                 """))
                 .andExpect(status().isUnauthorized());
 
@@ -112,7 +112,7 @@ class ScoreControllerTest {
                         .with(csrf())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
-                                {"score": 100}
+                                {"game1Score": 80, "game2Score": 100}
                                 """))
                 .andExpect(status().isForbidden());
 

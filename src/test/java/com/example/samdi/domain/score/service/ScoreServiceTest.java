@@ -18,6 +18,7 @@ import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
 public class ScoreServiceTest {
+
     @Mock
     private ScoreRepository scoreRepository;
 
@@ -25,46 +26,31 @@ public class ScoreServiceTest {
     private ScoreService scoreService;
 
     @Test
-    void keepHighestScoreAcrossSubmissions() {
-        Score userScore = new Score();
+    void keepHighestScoresAcrossSubmissions() {
+        Score score = new Score(1L, "플레이어");
+        when(scoreRepository.findNicknameForUpdate(1L)).thenReturn(Optional.of("플레이어"));
+        when(scoreRepository.findById(1L)).thenReturn(Optional.of(score));
 
-        when(scoreRepository.findById(1L))
-                .thenReturn(Optional.of(userScore));
+        scoreService.updateHighestScore(1L, 80, 100);
+        scoreService.updateHighestScore(1L, 100, 60);
 
-        assertEquals(0, userScore.getHighestScore());
-
-        scoreService.updateHighestScore(1L, 100);
-        assertEquals(100, userScore.getHighestScore());
-
-        scoreService.updateHighestScore(1L, 80);
-        assertEquals(100, userScore.getHighestScore());
-
-        scoreService.updateHighestScore(1L, 150);
-        assertEquals(150, userScore.getHighestScore());
-
-        scoreService.updateHighestScore(1L, 150);
-        scoreService.updateHighestScore(1L, 0);
-        assertEquals(150, userScore.getHighestScore());
+        assertEquals(100, score.getGame1HighestScore());
+        assertEquals(100, score.getGame2HighestScore());
+        assertEquals(180L, score.getHighestScore());
     }
 
     @Test
     void rejectsNegativeScore() {
-        assertThrows(
-                IllegalArgumentException.class,
-                () -> scoreService.updateHighestScore(1L, -1)
-        );
-
+        assertThrows(IllegalArgumentException.class,
+                () -> scoreService.updateHighestScore(1L, -1, 100));
         verifyNoInteractions(scoreRepository);
     }
 
     @Test
     void rejectsUnknownUser() {
-        when(scoreRepository.findById(999L))
-                .thenReturn(Optional.empty());
+        when(scoreRepository.findNicknameForUpdate(999L)).thenReturn(Optional.empty());
 
-        assertThrows(
-                EntityNotFoundException.class,
-                () -> scoreService.updateHighestScore(999L, 100)
-        );
+        assertThrows(EntityNotFoundException.class,
+                () -> scoreService.updateHighestScore(999L, 80, 100));
     }
 }
