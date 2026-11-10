@@ -3,6 +3,7 @@ package com.example.samdi.global.security;
 import com.example.samdi.global.exception.ErrorCode;
 import com.example.samdi.global.security.jwt.JwtAuthenticationFilter;
 import com.example.samdi.global.security.jwt.JwtProvider;
+import com.example.samdi.domain.user.repository.UserRepository;
 import org.springframework.boot.web.servlet.FilterRegistrationBean;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -50,9 +51,10 @@ public class SecurityConfig {
     @Bean
     public JwtAuthenticationFilter jwtAuthenticationFilter(
             JwtProvider jwtProvider,
-            SecurityErrorResponseWriter securityErrorResponseWriter
+            SecurityErrorResponseWriter securityErrorResponseWriter,
+            UserRepository userRepository
     ) {
-        return new JwtAuthenticationFilter(jwtProvider,securityErrorResponseWriter);
+        return new JwtAuthenticationFilter(jwtProvider,securityErrorResponseWriter,userRepository);
     }
 
     @Bean

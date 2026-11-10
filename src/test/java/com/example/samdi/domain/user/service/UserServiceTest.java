@@ -123,7 +123,7 @@ class UserServiceTest {
     @ParameterizedTest
     @ValueSource(strings = {"Wrong1234!", "babi-dummy-password"})
     void loginWithUnknownLoginIdRunsRealBCryptAndNeverIssuesToken(String password) {
-        when(userRepository.findByUserName("missing-player")).thenReturn(Optional.empty());
+        when(userRepository.findByUserNameForUpdate("missing-player")).thenReturn(Optional.empty());
         BCryptPasswordEncoder realEncoder = spy(new BCryptPasswordEncoder());
         JwtProvider jwtProvider = mock(JwtProvider.class);
         UserService service = new UserService(userRepository, realEncoder, jwtProvider,refreshTokenRepository, mock(EmailVerificationService.class), mock(com.example.samdi.domain.user.service.LoginAttemptService.class));
@@ -140,7 +140,7 @@ class UserServiceTest {
         // A positive check proves the captured value is an actual hash, not just BCrypt-shaped text.
         assertTrue(BCrypt.checkpw("babi-dummy-password", hashCaptor.getValue()));
         verify(realEncoder, never()).encode(any());
-        verify(userRepository).findByUserName("missing-player");
+        verify(userRepository).findByUserNameForUpdate("missing-player");
         verifyNoInteractions(jwtProvider);
     }
 

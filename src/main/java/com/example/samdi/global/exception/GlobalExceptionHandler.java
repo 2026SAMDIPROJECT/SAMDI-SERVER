@@ -86,6 +86,17 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
         );
     }
 
+    @ExceptionHandler(IncorrectPasswordException.class)
+    public ResponseEntity<ApiResponse<Void>> handleIncorrectPassword(IncorrectPasswordException e) {
+        return createErrorResponse(UserErrorCode.CURRENT_PASSWORD_INVALID, List.of());
+    }
+
+    @ExceptionHandler(NewPasswordMismatchException.class)
+    public ResponseEntity<ApiResponse<Void>> handleNewPasswordMismatch(NewPasswordMismatchException e) {
+        return createErrorResponse(UserErrorCode.PASSWORD_MISMATCH,
+                List.of(new ErrorDetail("newPasswordConfirm", UserErrorCode.PASSWORD_MISMATCH.getMessage())));
+    }
+
     @ExceptionHandler(LoginRateLimitException.class)
     public ResponseEntity<ApiResponse<Void>> handleLoginRateLimit(LoginRateLimitException e) {
         return createErrorResponse(UserErrorCode.LOGIN_RATE_LIMITED, List.of());
