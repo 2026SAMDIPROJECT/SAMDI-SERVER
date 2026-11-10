@@ -76,7 +76,7 @@ class PasswordChangeIntegrationTest {
     @Test
     void deletedUserIsRejected() throws Exception {
         String token = jwtProvider.createAccessToken("9223372036854775807", "session");
-        assertEquals(404, change(token, "OldPass123!", "NewPass123!", "NewPass123!").statusCode());
+        assertEquals(401, change(token, "OldPass123!", "NewPass123!", "NewPass123!").statusCode());
     }
 
     @Test

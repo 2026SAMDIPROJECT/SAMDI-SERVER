@@ -4,6 +4,7 @@ import com.example.samdi.domain.user.entity.User;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.repository.query.Param;
 import jakarta.persistence.LockModeType;
 
@@ -26,5 +27,13 @@ public interface UserRepository extends JpaRepository<User, Long> {
     boolean existsByEmail(String email);
 
     boolean existsByNickname(String nickname);
+
+    @Modifying
+    @Query(value = "DELETE FROM score WHERE user_id = :userId", nativeQuery = true)
+    void deleteScores(@Param("userId") Long userId);
+
+    @Modifying
+    @Query(value = "DELETE FROM user_achievements WHERE user_id = :userId", nativeQuery = true)
+    void deleteAchievements(@Param("userId") Long userId);
 
 }

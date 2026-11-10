@@ -1,6 +1,8 @@
 package com.example.samdi.global.security.jwt;
 
 import com.example.samdi.domain.user.controller.UserController;
+import com.example.samdi.domain.user.entity.User;
+import com.example.samdi.domain.user.repository.UserRepository;
 import com.example.samdi.domain.auth.email.EmailVerificationService;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import com.example.samdi.domain.user.exception.UserErrorCode;
@@ -60,6 +62,14 @@ class JwtAuthenticationIntegrationTest {
 
     @MockitoBean
     private EmailVerificationService emailVerificationService;
+
+    @Autowired
+    private UserRepository users;
+
+    private String existingUserId() {
+        String value = UUID.randomUUID().toString();
+        return users.saveAndFlush(User.builder().userName(value).nickname(value).email(value + "@example.invalid").password("unused").build()).getId().toString();
+    }
 
     @LocalServerPort
     private int port;
@@ -121,14 +131,15 @@ class JwtAuthenticationIntegrationTest {
 
     @Test
     void validJwtReachesProtectedApiWithUserId() throws Exception {
+        String userId = existingUserId();
         var request = request("/test/auth")
-                .header("Authorization", "Bearer " + jwtProvider.createAccessToken("42", "test-session"))
+                .header("Authorization", "Bearer " + jwtProvider.createAccessToken(userId, "test-session"))
                 .GET().build();
 
         var response = client.send(request, HttpResponse.BodyHandlers.ofString());
 
         assertEquals(200, response.statusCode());
-        assertEquals("인증된 사용자 ID: 42", response.body());
+        assertEquals("인증된 사용자 ID: " + userId, response.body());
     }
 
     @Test
@@ -162,13 +173,14 @@ class JwtAuthenticationIntegrationTest {
 
     @Test
     void validRequestParsesJwtOnlyOnce() throws Exception {
-        String token = jwtProvider.createAccessToken("43", "test-session");
+        String userId = existingUserId();
+        String token = jwtProvider.createAccessToken(userId, "test-session");
         var response = client.send(request("/test/auth")
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + token).GET().build(),
                 HttpResponse.BodyHandlers.ofString());
 
         assertEquals(200, response.statusCode());
-        assertEquals("인증된 사용자 ID: 43", response.body());
+        assertEquals("인증된 사용자 ID: " + userId, response.body());
         verify(jwtProvider, times(1)).getAccessIdentity(token);
         verify(jwtAuthenticationFilter, times(1)).doFilter(any(), any(), any());
     }
@@ -185,8 +197,9 @@ class JwtAuthenticationIntegrationTest {
 
     @Test
     void authenticatedDownstreamAccessDeniedReturns403() throws Exception {
+        String userId = existingUserId();
         var response = client.send(request("/test/filter-denied")
-                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + jwtProvider.createAccessToken("42", "test-session"))
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + jwtProvider.createAccessToken(userId, "test-session"))
                         .GET().build(), HttpResponse.BodyHandlers.ofString());
 
         assertErrorResponse(response, ErrorCode.FORBIDDEN);
@@ -195,8 +208,9 @@ class JwtAuthenticationIntegrationTest {
 
     @Test
     void authenticatedControllerAccessDeniedReturns403() throws Exception {
+        String userId = existingUserId();
         var response = client.send(request("/test/controller-denied")
-                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + jwtProvider.createAccessToken("42", "test-session"))
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + jwtProvider.createAccessToken(userId, "test-session"))
                         .GET().build(), HttpResponse.BodyHandlers.ofString());
 
         assertErrorResponse(response, ErrorCode.FORBIDDEN);

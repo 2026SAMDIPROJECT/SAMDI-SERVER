@@ -119,6 +119,18 @@ public class UserService {
         refreshTokenRepository.findByUserIdForUpdate(userId).ifPresent(refreshTokenRepository::delete);
     }
 
+    public void withdraw(Long userId, String password) {
+        User user = userRepository.findByIdForUpdate(userId).orElseThrow(UserNotFoundException::new);
+        if (!passwordEncoder.matches(password, user.getPassword())) {
+            throw new IncorrectPasswordException();
+        }
+        refreshTokenRepository.findByUserIdForUpdate(userId).ifPresent(refreshTokenRepository::delete);
+        userRepository.deleteScores(userId);
+        userRepository.deleteAchievements(userId);
+        userRepository.delete(user);
+        userRepository.flush();
+    }
+
     public String hashToken(String refreshToken) {
         MessageDigest digest;
         try {
