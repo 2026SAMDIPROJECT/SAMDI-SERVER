@@ -5,6 +5,7 @@ import com.example.samdi.domain.auth.email.EmailVerificationService;
 import com.example.samdi.domain.auth.repository.RefreshTokenRepository;
 import com.example.samdi.domain.user.dto.request.LoginRequest;
 import com.example.samdi.domain.user.dto.request.SignupRequest;
+import com.example.samdi.domain.user.dto.request.PasswordChangeRequest;
 import com.example.samdi.domain.user.dto.response.LoginResponse;
 import com.example.samdi.domain.user.dto.response.SignupResponse;
 import com.example.samdi.domain.user.entity.User;
@@ -15,6 +16,8 @@ import com.example.samdi.domain.user.exception.InvalidCredentialsException;
 import com.example.samdi.domain.user.exception.PasswordMismatchException;
 import com.example.samdi.domain.user.exception.DuplicateNicknameException;
 import com.example.samdi.domain.user.exception.UserNotFoundException;
+import com.example.samdi.domain.user.exception.IncorrectPasswordException;
+import com.example.samdi.domain.user.exception.NewPasswordMismatchException;
 import com.example.samdi.domain.user.repository.UserRepository;
 import com.example.samdi.global.security.jwt.JwtProvider;
 import jakarta.validation.Valid;
@@ -104,6 +107,18 @@ public class UserService {
         }
     }
 
+    public void changePassword(Long userId, PasswordChangeRequest request) {
+        User user = userRepository.findByIdForUpdate(userId).orElseThrow(UserNotFoundException::new);
+        if (!passwordEncoder.matches(request.currentPassword(), user.getPassword())) {
+            throw new IncorrectPasswordException();
+        }
+        if (!request.newPassword().equals(request.newPasswordConfirm())) {
+            throw new NewPasswordMismatchException();
+        }
+        user.changePassword(passwordEncoder.encode(request.newPassword()));
+        refreshTokenRepository.findByUserIdForUpdate(userId).ifPresent(refreshTokenRepository::delete);
+    }
+
     public String hashToken(String refreshToken) {
         MessageDigest digest;
         try {
@@ -190,7 +205,7 @@ public class UserService {
     @Transactional(noRollbackFor = InvalidCredentialsException.class)
     public LoginResponse login(LoginRequest request) {
         LoginAttempt attempt = loginAttemptService.begin(request.loginId());
-        Optional<User> optionalUser = userRepository.findByUserName(request.loginId());
+        Optional<User> optionalUser = userRepository.findByUserNameForUpdate(request.loginId());
         if (optionalUser.isEmpty()) {
             passwordEncoder.matches(request.password(), dummyPasswordHash);
             loginAttemptService.fail(attempt);

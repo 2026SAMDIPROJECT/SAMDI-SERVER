@@ -30,6 +30,8 @@ DB 연결은 `sslMode=verify-full`로 인증서와 호스트명을 검증합니�
 
 `PATCH /auth/me/nickname`은 Access Token 헤더와 `{"nickname":"새 닉네임"}`을 받습니다. 본인의 닉네임만 변경할 수 있으며 빈 값과 50자를 넘는 값은 400, 다른 사용자의 닉네임은 409로 거부합니다.
 
+`PATCH /auth/me/password`는 Access Token 헤더와 `{"currentPassword":"현재 비밀번호","newPassword":"새 비밀번호","newPasswordConfirm":"새 비밀번호"}`를 받습니다. 현재 비밀번호가 다르면 401, 새 비밀번호 검증이나 확인이 일치하지 않으면 400을 반환합니다. 변경 성공 시 저장된 Refresh Token을 무효화하고 쿠키를 삭제하므로 다시 로그인해야 합니다. 이미 발급된 Access Token은 만료 전까지 사용할 수 있습니다.
+
 쿠키는 `Secure`, `HttpOnly`, `SameSite=Strict`, `Path=/auth/refresh` 속성을 사용합니다. Unity에서는 HTTPS 연결과 쿠키의 저장·재전송을 지원하는 HTTP 클라이언트가 필요합니다. 브라우저의 교차 출처 호출은 별도 CORS 정책이 필요하며, 쿠키 인증과 재발급 요청 헤더를 고려해 허용 출처를 제한해야 합니다.
 
 기본 Access Token 만료는 60분, Refresh Token 만료는 14일입니다. 각각 `JWT_ACCESS_TOKEN_EXPIRATION_MINUTES`, `JWT_REFRESH_TOKEN_EXPIRATION_MINUTES`로 설정합니다. 로그인 실패 제한은 `LOGIN_MAX_FAILURES`, `LOGIN_WINDOW_MINUTES`, `LOGIN_BLOCK_MINUTES`로 설정하며 기본값은 5회, 5분, 5분입니다. 만료된 로그인 실패 기록은 `LOGIN_CLEANUP_INTERVAL`과 `LOGIN_CLEANUP_BATCH_SIZE` 설정에 따라 정리합니다.

@@ -3,6 +3,7 @@ package com.example.samdi.domain.user.controller;
 import com.example.samdi.domain.user.dto.request.LoginRequest;
 import com.example.samdi.domain.user.dto.request.SignupRequest;
 import com.example.samdi.domain.user.dto.request.NicknameRequest;
+import com.example.samdi.domain.user.dto.request.PasswordChangeRequest;
 import com.example.samdi.domain.user.dto.response.LoginResponse;
 import com.example.samdi.domain.user.dto.response.SignupResponse;
 import com.example.samdi.domain.user.service.UserService;
@@ -41,6 +42,14 @@ public class UserController {
                                             @Valid @RequestBody NicknameRequest request) {
         userService.changeNickname(Long.valueOf(userId), request.nickname());
         return ApiResponse.success("닉네임이 변경되었습니다.", null);
+    }
+
+    @PatchMapping("/me/password")
+    public ResponseEntity<ApiResponse<Void>> changePassword(@RequestAttribute("userId") String userId,
+                                                             @Valid @RequestBody PasswordChangeRequest request) {
+        userService.changePassword(Long.valueOf(userId), request);
+        return ResponseEntity.ok().header(HttpHeaders.SET_COOKIE, refreshCookie("", Duration.ZERO))
+                .body(ApiResponse.success("비밀번호가 변경되었습니다.", null));
     }
 
     @PostMapping("/signup")
