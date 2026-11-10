@@ -35,8 +35,10 @@ class WithdrawalIntegrationTest {
 
     @BeforeEach
     void prepareTables() {
-        jdbc.execute("CREATE TABLE IF NOT EXISTS score (user_id BIGINT UNSIGNED PRIMARY KEY, FOREIGN KEY (user_id) REFERENCES users(id))");
-        jdbc.execute("CREATE TABLE IF NOT EXISTS user_achievements (user_id BIGINT UNSIGNED NOT NULL, achievement_id BIGINT NOT NULL, PRIMARY KEY (user_id, achievement_id), FOREIGN KEY (user_id) REFERENCES users(id))");
+        jdbc.execute("CREATE TABLE IF NOT EXISTS score (user_id BIGINT UNSIGNED PRIMARY KEY, nickname VARCHAR(50) NOT NULL, FOREIGN KEY (user_id) REFERENCES users(id))");
+        jdbc.execute("CREATE TABLE IF NOT EXISTS achievements (id BIGINT PRIMARY KEY, name VARCHAR(100) NOT NULL, description TEXT NOT NULL, category VARCHAR(50) NOT NULL, condition_type VARCHAR(50) NOT NULL, target_value INT NOT NULL, hidden BOOLEAN NOT NULL)");
+        jdbc.update("INSERT INTO achievements (id, name, description, category, condition_type, target_value, hidden) SELECT 1, 'test', 'test', 'test', 'test', 1, false WHERE NOT EXISTS (SELECT 1 FROM achievements WHERE id = 1)");
+        jdbc.execute("CREATE TABLE IF NOT EXISTS user_achievements (user_id BIGINT UNSIGNED NOT NULL, achievement_id BIGINT NOT NULL, PRIMARY KEY (user_id, achievement_id), FOREIGN KEY (user_id) REFERENCES users(id), FOREIGN KEY (achievement_id) REFERENCES achievements(id))");
     }
 
     private User user() {
@@ -60,7 +62,7 @@ class WithdrawalIntegrationTest {
         var token = service.login(new LoginRequest(user.getUserName(), "Correct123!"));
         var otherToken = service.login(new LoginRequest(other.getUserName(), "Correct123!"));
         for (User current : new User[]{user, other}) {
-            jdbc.update("INSERT INTO score (user_id) VALUES (?)", current.getId());
+            jdbc.update("INSERT INTO score (user_id, nickname) VALUES (?, ?)", current.getId(), current.getNickname());
             jdbc.update("INSERT INTO user_achievements (user_id, achievement_id) VALUES (?, 1)", current.getId());
         }
 
@@ -91,7 +93,7 @@ class WithdrawalIntegrationTest {
     void withdrawalFailureRollsBackAllChanges() {
         User user = user();
         var token = service.login(new LoginRequest(user.getUserName(), "Correct123!"));
-        jdbc.update("INSERT INTO score (user_id) VALUES (?)", user.getId());
+        jdbc.update("INSERT INTO score (user_id, nickname) VALUES (?, ?)", user.getId(), user.getNickname());
         jdbc.update("INSERT INTO user_achievements (user_id, achievement_id) VALUES (?, 1)", user.getId());
         jdbc.execute("CREATE TABLE withdrawal_test_dependency (user_id BIGINT UNSIGNED NOT NULL, FOREIGN KEY (user_id) REFERENCES users(id))");
         try {

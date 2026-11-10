@@ -95,7 +95,7 @@ public class UserService {
     }
 
     public void changeNickname(Long userId, String nickname) {
-        User user = userRepository.findById(userId).orElseThrow(UserNotFoundException::new);
+        User user = userRepository.findByIdForUpdate(userId).orElseThrow(UserNotFoundException::new);
         user.changeNickname(nickname);
         try {
             userRepository.saveAndFlush(user);

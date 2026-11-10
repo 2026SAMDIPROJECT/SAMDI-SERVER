@@ -113,4 +113,40 @@ class PasswordChangeIntegrationTest {
             }
         }
     }
+
+    @Test
+    void nicknameAndPasswordChangesDoNotOverwriteEachOther() throws Exception {
+        String id = UUID.randomUUID().toString();
+        User user = users.saveAndFlush(User.builder().userName(id).email(id + "@example.invalid")
+                .password(encoder.encode("OldPass123!")).nickname(id).build());
+        var passwordChanged = new CountDownLatch(1);
+        var release = new CountDownLatch(1);
+        var nicknameStarted = new CountDownLatch(1);
+        try (var executor = Executors.newFixedThreadPool(2)) {
+            var password = executor.submit(() -> new TransactionTemplate(transactionManager).executeWithoutResult(status -> {
+                userService.changePassword(user.getId(), new PasswordChangeRequest("OldPass123!", "NewPass123!", "NewPass123!"));
+                passwordChanged.countDown();
+                try { if (!release.await(10, TimeUnit.SECONDS)) throw new IllegalStateException(); }
+                catch (InterruptedException e) { Thread.currentThread().interrupt(); throw new IllegalStateException(e); }
+            }));
+            try {
+                assertTrue(passwordChanged.await(10, TimeUnit.SECONDS));
+                var nickname = executor.submit(() -> {
+                    nicknameStarted.countDown();
+                    userService.changeNickname(user.getId(), "changed-" + id);
+                });
+                assertTrue(nicknameStarted.await(10, TimeUnit.SECONDS));
+                assertThrows(java.util.concurrent.TimeoutException.class, () -> nickname.get(300, TimeUnit.MILLISECONDS));
+                release.countDown();
+                password.get(10, TimeUnit.SECONDS);
+                nickname.get(10, TimeUnit.SECONDS);
+                User updated = users.findById(user.getId()).orElseThrow();
+                assertEquals("changed-" + id, updated.getNickname());
+                assertTrue(encoder.matches("NewPass123!", updated.getPassword()));
+                assertFalse(encoder.matches("OldPass123!", updated.getPassword()));
+            } finally {
+                release.countDown();
+            }
+        }
+    }
 }
