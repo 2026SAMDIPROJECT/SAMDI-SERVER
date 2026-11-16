@@ -1,7 +1,10 @@
 package com.example.samdi.domain.auth.email;
 
 import com.example.samdi.global.exception.ErrorCode;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.mail.MailAuthenticationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import javax.crypto.Mac;
@@ -17,6 +20,7 @@ import java.util.Locale;
 
 @Service
 public class EmailVerificationService {
+    private static final Logger log = LoggerFactory.getLogger(EmailVerificationService.class);
     private final EmailVerificationRepository repository;
     private final EmailSender sender;
     private final String secret;
@@ -48,8 +52,20 @@ public class EmailVerificationService {
         try {
             sender.send(normalized, code);
         } catch (RuntimeException e) {
+            log.error("이메일 발송 실패: {}", mailFailureType(e));
             throw new EmailSendException(ErrorCode.EMAIL_SEND_FAILED);
         }
+    }
+
+    private String mailFailureType(Throwable failure) {
+        for (Throwable cause = failure; cause != null; cause = cause.getCause()) {
+            if (cause instanceof MailAuthenticationException) return "SMTP 인증 실패";
+            if (cause instanceof javax.net.ssl.SSLException) return "TLS 연결 또는 인증서 검증 실패";
+            if (cause instanceof java.net.SocketTimeoutException) return "SMTP 연결 시간 초과";
+            if (cause instanceof java.net.UnknownHostException) return "SMTP 호스트 확인 실패";
+            if (cause instanceof java.net.ConnectException) return "SMTP 연결 실패";
+        }
+        return "SMTP 발송 오류";
     }
 
     @Transactional(noRollbackFor = EmailSendException.class)
