@@ -29,7 +29,7 @@ Cloudtype의 서비스 설정에서 다음을 지정합니다.
 | `DB_USERNAME` | 예 | MariaDB 접속 사용자 |
 | `DB_PASSWORD` | 예 | 접속 사용자 비밀번호; Secret으로 저장 |
 | `MAIL_USERNAME` | 예 | 인증 메일 발송 Gmail 주소 |
-| `MAIL_PASSWORD` | 예 | Gmail 앱 비밀번호; 새 앱 비밀번호를 Secret으로 저장 |
+| `MAIL_PASSWORD` | 예 | Gmail 앱 비밀번호; Google 화면의 표시용 공백을 제거한 뒤 새 앱 비밀번호를 Secret으로 저장 |
 | `EMAIL_VERIFICATION_SECRET` | 예 | 이메일 인증 HMAC 비밀키 |
 | `JWT_SECRET` | 예 | JWT 서명 키; 최소 256비트(32바이트) 이상 |
 
