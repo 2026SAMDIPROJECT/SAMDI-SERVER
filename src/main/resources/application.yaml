@@ -45,3 +45,15 @@ samdi:
       block-minutes: ${LOGIN_BLOCK_MINUTES:5}
       cleanup-interval: ${LOGIN_CLEANUP_INTERVAL:PT10M}
       cleanup-batch-size: ${LOGIN_CLEANUP_BATCH_SIZE:100}
+
+
+---
+spring:
+  config:
+    activate:
+      on-profile: cloudtype
+  datasource:
+    url: jdbc:mariadb://${DB_HOST}:${DB_PORT}/${DB_NAME}?sslMode=disable
+
+server:
+  port: ${SERVER_PORT:${PORT:8080}}
