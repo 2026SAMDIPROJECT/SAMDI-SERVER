@@ -1,5 +1,11 @@
 package com.example.samdi.domain.user.controller;
 
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.ExampleObject;
+import io.swagger.v3.oas.annotations.media.Schema;
+import io.swagger.v3.oas.annotations.responses.ApiResponses;
+
 import com.example.samdi.domain.user.dto.request.LoginRequest;
 import com.example.samdi.domain.user.dto.request.SignupRequest;
 import com.example.samdi.domain.user.dto.request.NicknameRequest;
@@ -62,6 +68,16 @@ public class UserController {
                 .body(ApiResponse.success("회원 탈퇴가 완료되었습니다.", null));
     }
 
+    @Operation(tags = "사용자 인증", summary = "이메일 인증 후 회원가입",
+            description = "**필수 입력** `email`, `loginId`, `nickname`, `password`, `passwordConfirm`, `verificationToken`\n\n이메일 인증에서 받은 일회용 가입 토큰을 사용합니다. 비밀번호는 공백을 제외한 영문·숫자·특수문자 8~20자이며 확인 값과 일치해야 합니다.",
+            requestBody = @io.swagger.v3.oas.annotations.parameters.RequestBody(required = true,
+                    content = @Content(schema = @Schema(implementation = SignupRequest.class),
+                            examples = @ExampleObject(value = "{\"email\":\"player@example.com\",\"loginId\":\"player01\",\"nickname\":\"플레이어\",\"password\":\"Example123!\",\"passwordConfirm\":\"Example123!\",\"verificationToken\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"}"))))
+    @ApiResponses({
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "201", description = "가입 성공"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "잘못된 입력 또는 유효하지 않은 가입 토큰"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "409", description = "이메일·로그인 ID·닉네임 중복")
+    })
     @PostMapping("/signup")
     @ResponseStatus(HttpStatus.CREATED)
     public ApiResponse<SignupResponse> signup(@Valid @RequestBody SignupRequest request) {
@@ -90,6 +106,17 @@ public class UserController {
                 .body(ApiResponse.success("로그아웃되었습니다.", null));
     }
 
+    @Operation(tags = "사용자 인증", summary = "로그인",
+            description = "**필수 입력** `loginId`, `password`\n\n응답의 `Authorization` 헤더에 액세스 토큰을, `Set-Cookie`에 리프레시 토큰을 반환합니다. 로그인 실패가 누적되면 일시적으로 제한될 수 있습니다.",
+            requestBody = @io.swagger.v3.oas.annotations.parameters.RequestBody(required = true,
+                    content = @Content(schema = @Schema(implementation = LoginRequest.class),
+                            examples = @ExampleObject(value = "{\"loginId\":\"player01\",\"password\":\"Example123!\"}"))))
+    @ApiResponses({
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "로그인 성공"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "잘못된 요청 본문"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "로그인 정보 불일치"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "429", description = "로그인 시도 제한")
+    })
     @PostMapping("/login")
     public ResponseEntity<ApiResponse<Void>> login(@Valid @RequestBody LoginRequest request) {
         LoginResponse response = userService.login(request);
