@@ -3,6 +3,7 @@ package com.example.samdi.global.security.jwt;
 import com.example.samdi.global.exception.ErrorCode;
 import com.example.samdi.global.security.SecurityErrorResponseWriter;
 import com.example.samdi.global.security.SecurityPaths;
+import com.example.samdi.domain.user.repository.UserRepository;
 import io.jsonwebtoken.JwtException;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
@@ -18,10 +19,12 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
     private final JwtProvider jwtProvider;
     private final SecurityErrorResponseWriter securityErrorResponseWriter;
+    private final UserRepository userRepository;
 
-    public JwtAuthenticationFilter(JwtProvider jwtProvider, SecurityErrorResponseWriter securityErrorResponseWriter) {
+    public JwtAuthenticationFilter(JwtProvider jwtProvider, SecurityErrorResponseWriter securityErrorResponseWriter, UserRepository userRepository) {
         this.jwtProvider = jwtProvider;
         this.securityErrorResponseWriter = securityErrorResponseWriter;
+        this.userRepository = userRepository;
     }
     @Override
     protected void doFilterInternal(HttpServletRequest request,
@@ -43,6 +46,15 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         }
 
         String userId = identity.userId();
+        try {
+            if (!userRepository.existsById(Long.valueOf(userId))) {
+                securityErrorResponseWriter.writeErrorResponse(response, ErrorCode.INVALID_TOKEN);
+                return;
+            }
+        } catch (NumberFormatException e) {
+            securityErrorResponseWriter.writeErrorResponse(response, ErrorCode.INVALID_TOKEN);
+            return;
+        }
         JwtAuthentication authentication = new JwtAuthentication(userId);
 
         request.setAttribute("userId",userId);

@@ -2,6 +2,7 @@ package com.example.samdi.global.security.jwt;
 
 import com.example.samdi.global.exception.ErrorCode;
 import com.example.samdi.global.security.SecurityErrorResponseWriter;
+import com.example.samdi.domain.user.repository.UserRepository;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
 import jakarta.servlet.FilterChain;
@@ -30,6 +31,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.when;
 
 
 class JwtAuthenticationFilterTest {
@@ -49,7 +51,9 @@ class JwtAuthenticationFilterTest {
         String secret = Base64.getEncoder().encodeToString(Jwts.SIG.HS256.key().build().getEncoded());
         signingKey = Keys.hmacShaKeyFor(secret.getBytes(StandardCharsets.UTF_8));
         jwtProvider = new JwtProvider(secret, 30, 20160);
-        filter = new JwtAuthenticationFilter(jwtProvider, new SecurityErrorResponseWriter(objectMapper));
+        UserRepository users = mock(UserRepository.class);
+        when(users.existsById(42L)).thenReturn(true);
+        filter = new JwtAuthenticationFilter(jwtProvider, new SecurityErrorResponseWriter(objectMapper), users);
         request = new MockHttpServletRequest("GET", "/test/auth");
         request.setServletPath("/test/auth");
         response = new MockHttpServletResponse();

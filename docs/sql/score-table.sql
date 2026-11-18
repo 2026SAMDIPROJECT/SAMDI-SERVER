@@ -1,0 +1,9 @@
+CREATE TABLE IF NOT EXISTS score (
+    user_id BIGINT UNSIGNED NOT NULL,
+    nickname VARCHAR(50) NOT NULL,
+    game1 INT NOT NULL DEFAULT 0,
+    game2 INT NOT NULL DEFAULT 0,
+    highest_score BIGINT NOT NULL DEFAULT 0,
+    PRIMARY KEY (user_id),
+    CONSTRAINT fk_score_user FOREIGN KEY (user_id) REFERENCES users (id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
