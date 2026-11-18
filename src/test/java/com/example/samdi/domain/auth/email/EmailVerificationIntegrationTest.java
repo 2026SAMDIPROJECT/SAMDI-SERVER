@@ -21,6 +21,27 @@ class EmailVerificationIntegrationTest {
     @MockitoBean private EmailSender sender;
     @Autowired private org.springframework.transaction.PlatformTransactionManager transactionManager;
 
+    @Test
+    void mailAuthenticationFailureLogsOnlyTheFailureCategory() {
+        var logger = (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(EmailVerificationService.class);
+        var appender = new ch.qos.logback.core.read.ListAppender<ch.qos.logback.classic.spi.ILoggingEvent>();
+        appender.start();
+        logger.addAppender(appender);
+        try {
+            doThrow(new org.springframework.mail.MailAuthenticationException("sensitive-example"))
+                    .when(sender).send(anyString(), anyString());
+            assertThrows(EmailSendException.class, () -> service.send("user@example.com"));
+            assertEquals(1, appender.list.size());
+            assertTrue(appender.list.getFirst().getFormattedMessage().contains("SMTP 인증 실패"));
+            assertFalse(appender.list.getFirst().getFormattedMessage().contains("sensitive-example"));
+            assertFalse(appender.list.getFirst().getFormattedMessage().contains("user@example.com"));
+            assertNull(appender.list.getFirst().getThrowableProxy());
+        } finally {
+            logger.detachAppender(appender);
+            appender.stop();
+        }
+    }
+
     @BeforeEach
     void setUp() {
         jdbc.update("DELETE FROM email_verifications");

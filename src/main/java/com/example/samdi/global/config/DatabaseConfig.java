@@ -10,6 +10,7 @@ import org.springframework.core.env.Profiles;
 
 import javax.sql.DataSource;
 import java.sql.SQLException;
+import java.net.URI;
 
 @org.springframework.context.annotation.Configuration
 public class DatabaseConfig {
@@ -38,7 +39,14 @@ public class DatabaseConfig {
             driver = "org.mariadb.jdbc.Driver";
         } else {
             url = environment.getRequiredProperty("spring.datasource.url");
-            validateTls(url);
+            if (environment.acceptsProfiles(Profiles.of("cloudtype"))) {
+                validateCloudtype(url,
+                        environment.getRequiredProperty("DB_HOST"),
+                        environment.getRequiredProperty("DB_PORT"),
+                        environment.getRequiredProperty("DB_NAME"));
+            } else {
+                validateTls(url);
+            }
             username = environment.getRequiredProperty("spring.datasource.username");
             password = environment.getRequiredProperty("spring.datasource.password");
             driver = "org.mariadb.jdbc.Driver";
@@ -74,6 +82,35 @@ public class DatabaseConfig {
             }
         } catch (SQLException e) {
             throw new IllegalStateException("운영 DB의 TLS 연결 설정이 올바르지 않습니다.");
+        }
+    }
+
+    private void validateCloudtype(String url, String host, String port, String database) {
+        String normalizedHost = host.trim().replaceFirst("\\.$", "");
+        if ("svc.sel3.cloudtype.app".equalsIgnoreCase(normalizedHost)) {
+            throw new IllegalStateException("Cloudtype DB_HOST에는 내부 연결 주소를 사용해야 합니다.");
+        }
+        if (!url.matches("(?i).*[?&]sslMode=disable(?:&.*)?")) {
+            throw new IllegalStateException("Cloudtype 내부 DB 연결은 sslMode=disable 설정이 필요합니다.");
+        }
+        try {
+            if (!url.startsWith("jdbc:mariadb://")) {
+                throw new IllegalStateException("Cloudtype DB는 MariaDB 연결 설정이 필요합니다.");
+            }
+            URI jdbcAddress = URI.create(url.substring("jdbc:".length()));
+            if (!normalizedHost.equalsIgnoreCase(jdbcAddress.getHost())
+                    || jdbcAddress.getPort() != Integer.parseInt(port)
+                    || !("/" + database).equals(jdbcAddress.getPath())) {
+                throw new IllegalStateException("Cloudtype DB URL은 내부 연결 환경변수와 일치해야 합니다.");
+            }
+            Configuration configuration = Configuration.parse(url);
+            if (configuration.sslMode() != SslMode.DISABLE
+                    || configuration.addresses().stream().anyMatch(address ->
+                            address.sslMode != null && address.sslMode != SslMode.DISABLE)) {
+                throw new IllegalStateException("Cloudtype 내부 DB 연결은 sslMode=disable 설정이 필요합니다.");
+            }
+        } catch (SQLException | IllegalArgumentException e) {
+            throw new IllegalStateException("Cloudtype DB 연결 설정이 올바르지 않습니다.");
         }
     }
 

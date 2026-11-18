@@ -4,17 +4,22 @@
 
 `cloudtype` 프로필은 기존 MariaDB 드라이버를 사용합니다. 연결 정보는 실행 환경에 다음 환경변수로 설정합니다.
 
-- `DB_HOST`: `svc.sel3.cloudtype.app`
-- `DB_PORT`: `31983`
+- `DB_HOST`, `DB_PORT`: Cloudtype DB 화면의 내부 연결 주소와 포트. 공개 주소 `svc.sel3.cloudtype.app:31983`를 사용하지 않습니다.
 - `DB_NAME`: Cloudtype에서 확인한 데이터베이스 이름
 - `DB_USERNAME`: Cloudtype에서 확인한 데이터베이스 사용자 이름
 - `DB_PASSWORD`: 해당 사용자의 비밀번호
 - `JWT_SECRET`, `EMAIL_VERIFICATION_SECRET`: 각각 독립적으로 생성한 비밀키
 - `MAIL_USERNAME`, `MAIL_PASSWORD`: 이메일 발송 계정 정보
 
+Cloudtype 서비스의 환경변수에 위 값을 설정하고 활성 프로필을 `cloudtype`으로 지정합니다. Gmail을 사용하는 경우 `MAIL_USERNAME`에는 발송 Gmail 주소, `MAIL_PASSWORD`에는 앱 비밀번호를 입력합니다. 인증 비밀키와 JWT 비밀키는 각각 별도로 생성하고 Git이나 PR에 올리지 않습니다. 같은 인증 DB를 공유하는 서버는 동일한 `EMAIL_VERIFICATION_SECRET`을 사용해야 합니다. 비밀키를 변경하면 기존에 발급된 이메일 인증번호와 가입 인증 증명은 사용할 수 없습니다.
+
+Cloudtype 앱 설정의 `Environment Variables`에서 `SPRING_PROFILES_ACTIVE=cloudtype`과 위 환경변수를 설정합니다. Java 21과 Gradle Wrapper를 사용하며 `./gradlew clean bootJar`로 빌드한 후 `java -jar build/libs/SAMDI-0.0.1-SNAPSHOT.jar`로 실행할 수 있습니다. 기본 HTTP 포트는 8080이며 `SERVER_PORT` 또는 `PORT`로 변경할 수 있습니다. Cloudtype의 공개 포트도 앱 포트에 맞춰 설정합니다. Redis는 사용하지 않습니다.
+
+애플리케이션 실행 전 DB 담당자가 실제 스키마와 [인증 테이블 SQL](docs/sql/auth-tables-final.sql), [로그인 제한 테이블 SQL](docs/sql/login-attempts.sql)을 비교해야 합니다. 운영 환경의 `ddl-auto: validate`는 누락된 테이블을 생성하지 않으며 스키마가 다르면 실행이 중단됩니다. 공유 DB에 SQL을 자동 실행하지 않습니다.
+
 예를 들어 환경변수를 안전하게 설정한 후 `./gradlew bootRun --args='--spring.profiles.active=cloudtype'`으로 실행합니다. 이 명령은 실제 DB 연결을 시도하므로 접속 정보와 서버 설정을 확인한 후에만 실행하세요.
 
-DB 연결은 `sslMode=verify-full`로 인증서와 호스트명을 검증합니다. 서버의 TLS 지원 여부와 신뢰할 수 있는 인증서 설정을 먼저 확인해야 하며, 확인되지 않으면 연결을 진행하지 않습니다. 스키마 설정은 `validate`입니다. 별도의 환경변수 파일은 자동으로 읽지 않습니다.
+Cloudtype 프로필은 팀 합의에 따라 내부 DB 연결에서만 `sslMode=disable`을 사용합니다. 기존 외부 기본 프로필은 인증서와 호스트명을 검증하는 `verify-full` 정책을 유지합니다. Cloudtype 상세 환경변수와 배포 절차는 [Cloudtype 배포 안내](docs/cloudtype-deployment.md)를 확인하세요. 모든 운영 프로필에서 스키마 설정은 `validate`입니다. 별도의 환경변수 파일은 자동으로 읽지 않습니다.
 
 ## 인증 API
 

@@ -100,6 +100,52 @@ class DatabaseConfigTest {
     }
 
     @Test
+    void cloudtypeProfileAllowsDisabledTlsOnlyForInternalHost() {
+        MockEnvironment environment = cloudtypeEnvironment()
+                .withProperty("spring.datasource.url", "jdbc:mariadb://mariadb:3306/game_db?sslMode=disable");
+
+        try (HikariDataSource dataSource = (HikariDataSource) config.dataSource(environment)) {
+            assertEquals("jdbc:mariadb://mariadb:3306/game_db?sslMode=disable", dataSource.getJdbcUrl());
+            assertEquals("org.mariadb.jdbc.Driver", dataSource.getDriverClassName());
+            assertNull(dataSource.getHikariPoolMXBean());
+        }
+        var properties = new HashMap<String, Object>();
+        properties.put("hibernate.hbm2ddl.auto", "update");
+        config.schemaValidation(environment).customize(properties);
+        assertEquals("validate", properties.get("hibernate.hbm2ddl.auto"));
+    }
+
+    @Test
+    void cloudtypeProfileRejectsKnownPublicDatabaseHost() {
+        MockEnvironment environment = cloudtypeEnvironment()
+                .withProperty("DB_HOST", "svc.sel3.cloudtype.app")
+                .withProperty("spring.datasource.url", "jdbc:mariadb://svc.sel3.cloudtype.app:31983/game_db?sslMode=disable");
+
+        assertThrows(IllegalStateException.class, () -> config.dataSource(environment));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "jdbc:mariadb://mariadb:3306/game_db",
+            "jdbc:mariadb://mariadb:3306/game_db?sslMode=verify-full",
+            "jdbc:mariadb://mariadb:3306/game_db?sslMode=trust"
+    })
+    void cloudtypeProfileRequiresDisabledTls(String url) {
+        MockEnvironment environment = cloudtypeEnvironment()
+                .withProperty("spring.datasource.url", url);
+
+        assertThrows(IllegalStateException.class, () -> config.dataSource(environment));
+    }
+
+    @Test
+    void cloudtypeProfileRejectsDatasourceUrlThatDiffersFromInternalSettings() {
+        MockEnvironment environment = cloudtypeEnvironment()
+                .withProperty("spring.datasource.url", "jdbc:mariadb://external.example.net:31983/game_db?sslMode=disable");
+
+        assertThrows(IllegalStateException.class, () -> config.dataSource(environment));
+    }
+
+    @Test
     void mariaDbIntegrationRequiresExplicitOptIn() {
         MockEnvironment environment = testEnvironment().withProperty("SAMDI_TEST_MARIADB_URL",
                 "jdbc:mariadb://127.0.0.1:12345/game_db");
@@ -194,5 +240,16 @@ class DatabaseConfigTest {
         return new MockEnvironment()
                 .withProperty("spring.datasource.username", "test-user")
                 .withProperty("spring.datasource.password", "test-only-value");
+    }
+
+    private MockEnvironment cloudtypeEnvironment() {
+        MockEnvironment environment = new MockEnvironment()
+                .withProperty("spring.datasource.username", "test-user")
+                .withProperty("spring.datasource.password", "test-only-value")
+                .withProperty("DB_HOST", "mariadb")
+                .withProperty("DB_PORT", "3306")
+                .withProperty("DB_NAME", "game_db");
+        environment.setActiveProfiles("cloudtype");
+        return environment;
     }
 }
