@@ -1,10 +1,16 @@
 package com.example.samdi.domain.user.controller;
 
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.enums.SecuritySchemeType;
+import io.swagger.v3.oas.annotations.headers.Header;
 import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.ExampleObject;
 import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
+import io.swagger.v3.oas.annotations.security.SecurityRequirement;
+import io.swagger.v3.oas.annotations.security.SecurityScheme;
+import io.swagger.v3.oas.annotations.tags.Tag;
 
 import com.example.samdi.domain.user.dto.request.LoginRequest;
 import com.example.samdi.domain.user.dto.request.SignupRequest;
@@ -36,6 +42,7 @@ import org.springframework.security.access.AccessDeniedException;
 import com.example.samdi.domain.user.exception.InvalidCredentialsException;
 import java.time.Duration;
 
+@SecurityScheme(name = "bearerAuth", type = SecuritySchemeType.HTTP, scheme = "bearer", bearerFormat = "JWT")
 @RestController
 @RequestMapping("/auth")
 @RequiredArgsConstructor
@@ -85,9 +92,29 @@ public class UserController {
         return ApiResponse.success("회원가입이 완료되었습니다.", response);
     }
 
+    @Tag(name = "토큰 세션", description = "토큰을 갱신하거나 로그인 세션을 종료합니다.")
+    @Operation(summary = "액세스 토큰 갱신", description = """
+            **필수 입력** `__Secure-refreshToken` 쿠키와 `X-Requested-With: XMLHttpRequest` 헤더
+
+            로그인 또는 이전 갱신 응답에서 받은 쿠키를 HTTPS 요청에 포함합니다.
+            성공하면 새 액세스 토큰을 반환하고 기존 리프레시 토큰을 교체합니다.
+            """)
+    @ApiResponses({
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "토큰 갱신 성공",
+                    headers = {
+                            @Header(name = HttpHeaders.AUTHORIZATION, description = "Bearer 액세스 토큰"),
+                            @Header(name = HttpHeaders.SET_COOKIE, description = "갱신된 리프레시 토큰 쿠키")
+                    }),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "리프레시 토큰 누락, 만료 또는 불일치"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "403", description = "X-Requested-With 헤더 누락 또는 불일치")
+    })
     @PostMapping("/refresh")
-    public ResponseEntity<ApiResponse<Void>> refresh(@CookieValue(name = "__Secure-refreshToken", required = false) String refreshToken,
-                                                     @RequestHeader(name = "X-Requested-With", required = false) String requestedWith) {
+    public ResponseEntity<ApiResponse<Void>> refresh(
+            @Parameter(required = true, description = "로그인 또는 이전 갱신 응답에서 받은 리프레시 토큰 쿠키")
+            @CookieValue(name = "__Secure-refreshToken", required = false) String refreshToken,
+            @Parameter(required = true, description = "요청 구분 헤더", example = "XMLHttpRequest")
+            @RequestHeader(name = "X-Requested-With", required = false) String requestedWith
+    ) {
         if (!"XMLHttpRequest".equals(requestedWith)) {
             throw new AccessDeniedException("잘못된 요청입니다.");
         }
@@ -98,9 +125,23 @@ public class UserController {
         return tokenResponse("토큰이 재발급되었습니다.", response);
     }
 
+    @Operation(tags = "토큰 세션", summary = "로그인 세션 종료", security = @SecurityRequirement(name = "bearerAuth"),
+            description = """
+                    **인증** Bearer 액세스 토큰
+
+                    토큰에 해당하는 세션의 리프레시 토큰을 폐기하고 쿠키를 삭제합니다.
+                    이미 발급된 액세스 토큰은 만료 시점까지 유효합니다.
+                    """)
+    @ApiResponses({
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "로그아웃 성공",
+                    headers = @Header(name = HttpHeaders.SET_COOKIE, description = "리프레시 토큰 쿠키 삭제")),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "액세스 토큰 또는 로그인 세션이 유효하지 않음")
+    })
     @PostMapping("/logout")
-    public ResponseEntity<ApiResponse<Void>> logout(@RequestAttribute("userId") String userId,
-                                    @RequestAttribute("sessionId") String sessionId) {
+    public ResponseEntity<ApiResponse<Void>> logout(
+            @Parameter(hidden = true) @RequestAttribute("userId") String userId,
+            @Parameter(hidden = true) @RequestAttribute("sessionId") String sessionId
+    ) {
         userService.logout(Long.valueOf(userId), sessionId);
         return ResponseEntity.ok().header(HttpHeaders.SET_COOKIE, refreshCookie("", Duration.ZERO))
                 .body(ApiResponse.success("로그아웃되었습니다.", null));
