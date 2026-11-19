@@ -52,24 +52,67 @@ public class UserController {
     @Value("${jwt.refresh-token-expiration-minutes}")
     private long refreshTokenExpirationMinutes = 20160;
 
+    @Tag(name = "내 계정", description = "로그인한 사용자의 닉네임, 비밀번호 및 계정을 관리합니다.")
+    @Operation(summary = "닉네임 변경",
+            description = "**인증** Bearer 액세스 토큰\n\n**필수 입력** `nickname`. 최대 50자까지 입력할 수 있습니다.",
+            security = @SecurityRequirement(name = "bearerAuth"),
+            requestBody = @io.swagger.v3.oas.annotations.parameters.RequestBody(required = true,
+                    content = @Content(schema = @Schema(implementation = NicknameRequest.class),
+                            examples = @ExampleObject(value = "{\"nickname\":\"새 닉네임\"}"))))
+    @ApiResponses({
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "닉네임 변경 성공"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "닉네임 형식 오류"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "인증 정보가 유효하지 않음"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "409", description = "닉네임 중복")
+    })
     @PatchMapping("/me/nickname")
-    public ApiResponse<Void> changeNickname(@RequestAttribute("userId") String userId,
-                                            @Valid @RequestBody NicknameRequest request) {
+    public ApiResponse<Void> changeNickname(
+            @Parameter(hidden = true) @RequestAttribute("userId") String userId,
+            @Valid @RequestBody NicknameRequest request
+    ) {
         userService.changeNickname(Long.valueOf(userId), request.nickname());
         return ApiResponse.success("닉네임이 변경되었습니다.", null);
     }
 
+    @Operation(tags = "내 계정", summary = "비밀번호 변경",
+            description = "**인증** Bearer 액세스 토큰\n\n**필수 입력** `currentPassword`, `newPassword`, `newPasswordConfirm`. 새 비밀번호는 공백을 제외한 영문·숫자·특수문자 8~20자이며 확인 값과 일치해야 합니다. 성공하면 리프레시 토큰을 폐기합니다.",
+            security = @SecurityRequirement(name = "bearerAuth"),
+            requestBody = @io.swagger.v3.oas.annotations.parameters.RequestBody(required = true,
+                    content = @Content(schema = @Schema(implementation = PasswordChangeRequest.class),
+                            examples = @ExampleObject(value = "{\"currentPassword\":\"Example123!\",\"newPassword\":\"NewExample123!\",\"newPasswordConfirm\":\"NewExample123!\"}"))))
+    @ApiResponses({
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "비밀번호 변경 성공",
+                    headers = @Header(name = HttpHeaders.SET_COOKIE, description = "리프레시 토큰 쿠키 삭제")),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "새 비밀번호 형식 오류 또는 확인 값 불일치"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "유효하지 않은 인증 정보 또는 현재 비밀번호 불일치")
+    })
     @PatchMapping("/me/password")
-    public ResponseEntity<ApiResponse<Void>> changePassword(@RequestAttribute("userId") String userId,
-                                                             @Valid @RequestBody PasswordChangeRequest request) {
+    public ResponseEntity<ApiResponse<Void>> changePassword(
+            @Parameter(hidden = true) @RequestAttribute("userId") String userId,
+            @Valid @RequestBody PasswordChangeRequest request
+    ) {
         userService.changePassword(Long.valueOf(userId), request);
         return ResponseEntity.ok().header(HttpHeaders.SET_COOKIE, refreshCookie("", Duration.ZERO))
                 .body(ApiResponse.success("비밀번호가 변경되었습니다.", null));
     }
 
+    @Operation(tags = "내 계정", summary = "회원 탈퇴",
+            description = "**인증** Bearer 액세스 토큰\n\n**필수 입력** `password`. 비밀번호가 맞으면 계정과 연관된 로그인 세션, 점수 및 업적 진행 기록을 삭제합니다.",
+            security = @SecurityRequirement(name = "bearerAuth"),
+            requestBody = @io.swagger.v3.oas.annotations.parameters.RequestBody(required = true,
+                    content = @Content(schema = @Schema(implementation = WithdrawRequest.class),
+                            examples = @ExampleObject(value = "{\"password\":\"Example123!\"}"))))
+    @ApiResponses({
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "회원 탈퇴 성공",
+                    headers = @Header(name = HttpHeaders.SET_COOKIE, description = "리프레시 토큰 쿠키 삭제")),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "비밀번호 누락"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "유효하지 않은 인증 정보 또는 비밀번호 불일치")
+    })
     @DeleteMapping("/me")
-    public ResponseEntity<ApiResponse<Void>> withdraw(@RequestAttribute("userId") String userId,
-                                                       @Valid @RequestBody WithdrawRequest request) {
+    public ResponseEntity<ApiResponse<Void>> withdraw(
+            @Parameter(hidden = true) @RequestAttribute("userId") String userId,
+            @Valid @RequestBody WithdrawRequest request
+    ) {
         userService.withdraw(Long.valueOf(userId), request.password());
         return ResponseEntity.ok().header(HttpHeaders.SET_COOKIE, refreshCookie("", Duration.ZERO))
                 .body(ApiResponse.success("회원 탈퇴가 완료되었습니다.", null));
